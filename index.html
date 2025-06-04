@@ -233,7 +233,7 @@
                         </div>
                         <div class="history text-start">
                             <h5>Score History</h5>
-                            <ul id="score-history" class="list-group"></ul>
+                            <ul id="score-history" class="list-group" style="overflow-x: hidden;"></ul>
                         </div>
                     </div>
                 </div>
@@ -351,16 +351,37 @@
             let current = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
             const newScore = current - score;
 
-            const isValidCheckout = newScore === 0 && !bogeyNumbers.includes(current);
+            // 💥 Attempted checkout
+            if (newScore === 0 && score <= 170 && !bogeyNumbers.includes(current)) {
+                const finalDartDouble = confirm("Did you finish on a double or the bull?");
 
-            if (isValidCheckout) {
-                const latestScore = score;
+                if (!finalDartDouble) {
+                    alert("Invalid checkout! Turn is a bust.");
+                    history[history.length - 1].push({
+                        player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                        score: 'BUST',
+                        darts: 3,
+                        isCheckout: false,
+                        isBust: true,
+                        legIndex: history.length - 1
+                    });
 
+                    if (gameType === 'multi') {
+                        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+                    }
+
+                    inputBuffer = '';
+                    updateUI();
+                    return;
+                }
+
+                // ✅ Valid checkout
                 history[history.length - 1].push({
                     player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
                     score: score,
                     darts: 3,
                     isCheckout: true,
+                    isBust: false,
                     legIndex: history.length - 1
                 });
 
@@ -374,7 +395,7 @@
                             playerScores = [startingScore, startingScore];
                             currentPlayerIndex = 0;
                         },
-                        latestScore
+                        latestScore: score
                     });
                     return;
                 } else {
@@ -386,38 +407,57 @@
                         resetScores: () => {
                             currentScore = startingScore;
                         },
-                        latestScore
+                        latestScore: score
                     });
                     return;
                 }
             }
 
-            if (newScore > 1) {
-                if (gameType === 'multi') {
-                    playerScores[currentPlayerIndex] = newScore;
-                } else {
-                    currentScore = newScore;
-                }
-
+            // 💥 Bust logic
+            if (newScore < 2 || newScore < 0) {
                 history[history.length - 1].push({
                     player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                    score: score,
+                    score: 'BUST',
                     darts: 3,
                     isCheckout: false,
+                    isBust: true,
                     legIndex: history.length - 1
                 });
-
-                inputBuffer = '';
 
                 if (gameType === 'multi') {
                     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
                 }
 
+                inputBuffer = '';
                 updateUI();
-            } else {
-                alert("Score too high! You can't go below zero.");
+                return;
             }
+
+            // ✅ Valid normal score
+            if (gameType === 'multi') {
+                playerScores[currentPlayerIndex] = newScore;
+            } else {
+                currentScore = newScore;
+            }
+
+            history[history.length - 1].push({
+                player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                score: score,
+                darts: 3,
+                isCheckout: false,
+                isBust: false,
+                legIndex: history.length - 1
+            });
+
+            inputBuffer = '';
+
+            if (gameType === 'multi') {
+                currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+            }
+
+            updateUI();
         }
+
 
 
 
@@ -472,6 +512,10 @@
         }
 
         function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
+            // ✅ Always reset per dart state after a leg win
+            perDartScores = [null, null, null];
+            dartIndex = 0;
+
             if (isMatchOver) {
                 gameScreen.classList.add('d-none');
                 document.getElementById('stats-screen').classList.remove('d-none');
@@ -506,6 +550,7 @@
                 let firstNineDarts = 0;
                 let checkoutAttempts = 0;
                 let checkouts = 0;
+                let busts = 0;
                 let highestFinish = 0;
                 let highestScore = 0;
                 let bestLeg = Infinity;
@@ -516,12 +561,15 @@
                     let legDarts = 0;
 
                     leg.forEach((entry, i) => {
-                        totalScore += entry.score;
+                        if (!entry.isBust) {
+                            totalScore += entry.score;
+                            legScore += entry.score;
+                        }
+
                         totalDarts += entry.darts;
-                        legScore += entry.score;
                         legDarts += entry.darts;
 
-                        if (i < 3) {
+                        if (i < 3 && !entry.isBust) {
                             firstNineTotal += entry.score;
                             firstNineDarts += entry.darts;
                         }
@@ -531,7 +579,13 @@
                             if (entry.score > highestFinish) highestFinish = entry.score;
                         }
 
-                        if (entry.score > highestScore) highestScore = entry.score;
+                        if (!entry.isBust && entry.score > highestScore) {
+                            highestScore = entry.score;
+                        }
+
+                        if (entry.isBust) {
+                            busts++;
+                        }
                     });
 
                     if (legDarts > 0) {
@@ -539,7 +593,7 @@
                         if (legDarts > worstLeg) worstLeg = legDarts;
                     }
 
-                    checkoutAttempts += 1;
+                    checkoutAttempts++;
                 });
 
                 const average = totalDarts ? (totalScore / totalDarts) * 3 : 0;
@@ -549,26 +603,28 @@
                 const card = document.createElement('div');
                 card.className = 'col-md-6 mb-4';
                 card.innerHTML = `
-                    <div class="card">
-                        <div class="card-body">
-                            <h4 class="card-title text-center">${playerName}</h4>
-                            <ul class="list-group list-group-flush mt-3">
-                                <li class="list-group-item">3-Dart Average: <strong>${average.toFixed(2)}</strong></li>
-                                <li class="list-group-item">First 9 Average: <strong>${first9avg.toFixed(2)}</strong></li>
-                                <li class="list-group-item">Checkout Rate: <strong>${checkoutRate.toFixed(1)}%</strong></li>
-                                <li class="list-group-item">Checkouts: <strong>${checkouts}</strong></li>
-                                <li class="list-group-item">Highest Finish: <strong>${highestFinish}</strong></li>
-                                <li class="list-group-item">Highest Score: <strong>${highestScore}</strong></li>
-                                <li class="list-group-item">Best Leg (fewest darts): <strong>${isFinite(bestLeg) ? bestLeg : '-'}</strong></li>
-                                <li class="list-group-item">Worst Leg (most darts): <strong>${worstLeg || '-'}</strong></li>
-                            </ul>
-                        </div>
-                    </div>
-                `;
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title text-center">${playerName}</h4>
+                    <ul class="list-group list-group-flush mt-3">
+                        <li class="list-group-item">3-Dart Average: <strong>${average.toFixed(2)}</strong></li>
+                        <li class="list-group-item">First 9 Average: <strong>${first9avg.toFixed(2)}</strong></li>
+                        <li class="list-group-item">Checkout Rate: <strong>${checkoutRate.toFixed(1)}%</strong></li>
+                        <li class="list-group-item">Checkouts: <strong>${checkouts}</strong></li>
+                        <li class="list-group-item">Busts: <strong>${busts}</strong></li>
+                        <li class="list-group-item">Highest Finish: <strong>${highestFinish}</strong></li>
+                        <li class="list-group-item">Highest Score: <strong>${highestScore}</strong></li>
+                        <li class="list-group-item">Best Leg (fewest darts): <strong>${isFinite(bestLeg) ? bestLeg : '-'}</strong></li>
+                        <li class="list-group-item">Worst Leg (most darts): <strong>${worstLeg || '-'}</strong></li>
+                    </ul>
+                </div>
+            </div>
+        `;
 
                 container.appendChild(card);
             });
         }
+
 
 
 
@@ -577,7 +633,7 @@
 
             let actual;
             if (base === 25 || base === 50) {
-                actual = base; // Ignore multiplier for Outer/Bull
+                actual = base; // Ignore multiplier
             } else {
                 actual = base;
                 if (multiplier === 'Double') actual *= 2;
@@ -587,78 +643,94 @@
             perDartScores[dartIndex] = actual;
             dartIndex++;
 
-            if (dartIndex === 3) {
-                const total = perDartScores.reduce((a, b) => a + b, 0);
-                const latestScore = total;
+            const totalSoFar = perDartScores.reduce((sum, s) => sum + (s || 0), 0);
+            let current = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
+            const newScore = current - totalSoFar;
 
-                let current = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
-                const newScore = current - total;
-                const lastDart = perDartScores[dartIndex - 1];
+            // Bust conditions
+            const lastDart = perDartScores[dartIndex - 1];
+            const isDoubleOrBull = (lastDart === 50 || (lastDart % 2 === 0 && lastDart <= 40));
+            const isCheckout = newScore === 0 && isDoubleOrBull && !bogeyNumbers.includes(current);
 
-                const isValidCheckout =
-                    newScore === 0 &&
-                    lastDart <= 50 &&
-                    lastDart % 2 === 0 &&
-                    !bogeyNumbers.includes(current);
+            if (newScore < 0 || (newScore === 0 && !isCheckout)) {
+                history[history.length - 1].push({
+                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    score: 'BUST',
+                    darts: dartIndex,
+                    isCheckout: false,
+                    isBust: true,
+                    legIndex: history.length - 1
+                });
 
-                if (isValidCheckout) {
-                    history[history.length - 1].push({
-                        player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                        score: total,
-                        darts: 3,
-                        isCheckout: true,
-                        legIndex: history.length - 1
-                    });
-
-                    if (gameType === 'multi') {
-                        playerScores[currentPlayerIndex] = 0;
-                        playerLegs[currentPlayerIndex]++;
-                        handleLegWin({
-                            isMatchOver: playerLegs[currentPlayerIndex] >= legsToWin,
-                            winnerName: players[currentPlayerIndex],
-                            resetScores: () => {
-                                playerScores = [startingScore, startingScore];
-                                currentPlayerIndex = 0;
-                            },
-                            latestScore
-                        });
-                        return;
-                    } else {
-                        currentScore = 0;
-                        playerLegs[0]++;
-                        handleLegWin({
-                            isMatchOver: playerLegs[0] >= legsToWin,
-                            winnerName: "You",
-                            resetScores: () => {
-                                currentScore = startingScore;
-                            },
-                            latestScore
-                        });
-                        return;
-                    }
-                } else if (newScore > 1) {
-                    if (gameType === 'multi') {
-                        playerScores[currentPlayerIndex] = newScore;
-                    } else {
-                        currentScore = newScore;
-                    }
-
-                    history[history.length - 1].push({
-                        player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                        score: total,
-                        darts: 3,
-                        isCheckout: false,
-                        legIndex: history.length - 1
-                    });
-
-                    if (gameType === 'multi') {
-                        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
-                    }
-                } else {
-                    alert("Score too high or invalid checkout!");
+                if (gameType === 'multi') {
+                    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
                 }
 
-                // Reset for next turn
+                perDartScores = [null, null, null];
+                dartIndex = 0;
+                updateUI();
+                updateCheckoutSuggestion();
+                return;
+            }
+
+            if (isCheckout) {
+                history[history.length - 1].push({
+                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    score: totalSoFar,
+                    darts: dartIndex,
+                    isCheckout: true,
+                    isBust: false,
+                    legIndex: history.length - 1
+                });
+
+                if (gameType === 'multi') {
+                    playerScores[currentPlayerIndex] = 0;
+                    playerLegs[currentPlayerIndex]++;
+                    handleLegWin({
+                        isMatchOver: playerLegs[currentPlayerIndex] >= legsToWin,
+                        winnerName: players[currentPlayerIndex],
+                        resetScores: () => {
+                            playerScores = [startingScore, startingScore];
+                            currentPlayerIndex = 0;
+                        },
+                        latestScore: totalSoFar
+                    });
+                } else {
+                    currentScore = 0;
+                    playerLegs[0]++;
+                    handleLegWin({
+                        isMatchOver: playerLegs[0] >= legsToWin,
+                        winnerName: "You",
+                        resetScores: () => {
+                            currentScore = startingScore;
+                        },
+                        latestScore: totalSoFar
+                    });
+                }
+                return;
+            }
+
+            // If 3 darts used, save as normal score
+            if (dartIndex === 3) {
+                if (gameType === 'multi') {
+                    playerScores[currentPlayerIndex] = newScore;
+                } else {
+                    currentScore = newScore;
+                }
+
+                history[history.length - 1].push({
+                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    score: totalSoFar,
+                    darts: 3,
+                    isCheckout: false,
+                    isBust: false,
+                    legIndex: history.length - 1
+                });
+
+                if (gameType === 'multi') {
+                    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+                }
+
                 perDartScores = [null, null, null];
                 dartIndex = 0;
             }
@@ -666,6 +738,7 @@
             updateUI();
             updateCheckoutSuggestion(getPartialScore());
         }
+
 
 
 
@@ -872,13 +945,20 @@
 
             if (gameType === 'multi') {
                 players.forEach((name, index) => {
+                    // Compute player's total darts and score (excluding busts)
+                    const entries = history.flat().filter(h => h.player === name && !h.isBust);
+                    const totalDarts = entries.reduce((sum, e) => sum + e.darts, 0);
+                    const totalScore = entries.reduce((sum, e) => sum + e.score, 0);
+                    const average = totalDarts > 0 ? ((totalScore / totalDarts) * 3).toFixed(2) : '-';
+
                     const playerDiv = document.createElement('div');
                     playerDiv.className = `text-center flex-fill ${index === currentPlayerIndex ? 'fw-bold text-primary' : ''}`;
                     playerDiv.innerHTML = `
-                    <div>${name}</div>
-                    <div style="font-size: 1.5rem;">${playerScores[index]}</div>
-                    <div style="font-size: 0.9rem;">Legs: ${playerLegs[index]}</div>
-                `;
+                <div>${name}</div>
+                <div style="font-size: 1.5rem;">${playerScores[index]}</div>
+                <div style="font-size: 0.9rem;">Legs: ${playerLegs[index]}</div>
+                <div style="font-size: 0.8rem;">Avg: ${average}</div>
+            `;
                     playersContainer.appendChild(playerDiv);
                 });
             } else {
