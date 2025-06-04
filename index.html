@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dart Scorer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Dart Scorer</h1>
+    <div class="game-selection">
+        <label for="game-select">Choose a game:</label>
+        <select id="game-select">
+            <option value="501">501</option>
+            <option value="301">301</option>
+            <option value="clock">Around the Clock</option>
+        </select>
+        <button id="start-btn">Start Game</button>
+    </div>
+
+    <div class="game-area hidden" id="game-area">
+        <h2 id="game-title"></h2>
+        <div id="score-display"></div>
+        <input type="number" id="score-input" placeholder="Enter score" />
+        <button id="submit-score">Submit</button>
+        <button id="reset-btn">Reset</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
