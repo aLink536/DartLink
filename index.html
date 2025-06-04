@@ -66,7 +66,7 @@
         }
 
         .dart-score-box::before {
-            content: "586";
+            /* content: "\f586"; */
             font-family: 'bootstrap-icons';
             position: absolute;
             top: -12px;
@@ -88,9 +88,23 @@
             <li class="nav-item">
                 <button class="nav-link" id="multi-tab" onclick="selectGameType('multi')">Multiplayer</button>
             </li>
+            <li class="nav-item">
+                <button class="nav-link" id="bot-tab" onclick="selectGameType('bot')">VS Bot</button>
+            </li>
         </ul>
+
+        <div id="bot-difficulty" class="mb-3 d-none">
+            <label for="difficulty-select" class="form-label">Select Bot Difficulty</label>
+            <select id="difficulty-select" class="form-select w-auto mx-auto">
+                <option value="easy">Beginner</option>
+                <option value="medium" selected>Intermediate</option>
+                <option value="hard">Pro</option>
+            </select>
+        </div>
+
         <button class="btn btn-primary btn-lg mt-3" onclick="proceedToGameMode()">Continue</button>
     </div>
+
 
     <div id="name-screen" class="container py-5 text-center d-none">
         <h1 class="mb-4">Multiplayer Setup</h1>
@@ -252,6 +266,7 @@
     </div>
 
     <script>
+        let botDifficulty = 'medium';
         let legsToWin = 1;
         let playerLegs = [];
         let startingScore = 501;
@@ -274,6 +289,10 @@
             gameType = type;
             document.getElementById('single-tab').classList.toggle('active', type === 'single');
             document.getElementById('multi-tab').classList.toggle('active', type === 'multi');
+            document.getElementById('bot-tab').classList.toggle('active', type === 'bot');
+            document.getElementById('bot-difficulty').classList.toggle('d-none', type !== 'bot');
+            document.getElementById('single-tab').classList.toggle('active', type === 'single');
+            document.getElementById('multi-tab').classList.toggle('active', type === 'multi');
         }
 
         function proceedToGameMode() {
@@ -284,6 +303,71 @@
                 startScreen.classList.remove('d-none');
             }
         }
+
+
+        function botTurn() {
+            const current = playerScores[1];
+            let dartsUsed = 3;
+            let score;
+
+            // Estimate bot's accuracy
+            const difficultySettings = {
+                easy: { avg: 40, chanceOfCheckout: 0.2 },
+                medium: { avg: 60, chanceOfCheckout: 0.5 },
+                hard: { avg: 80, chanceOfCheckout: 0.8 }
+            };
+
+            const { avg, chanceOfCheckout } = difficultySettings[botDifficulty] || difficultySettings.medium;
+
+            // Can the bot checkout?
+            if (current <= 170 && !bogeyNumbers.includes(current) && Math.random() < chanceOfCheckout) {
+                const suggestion = getCheckoutSuggestion(current);
+                if (suggestion) {
+                    // crude way to convert checkout suggestion to score
+                    score = current;
+                }
+            }
+
+            // Otherwise just generate a realistic total
+            if (!score) {
+                const variance = Math.floor(Math.random() * 30) - 15; // ±15 range
+                score = Math.max(0, Math.min(180, avg + variance));
+                if (score > current) score = 0; // simulate bust if too high
+            }
+
+            const newScore = current - score;
+
+            const isCheckout = newScore === 0;
+            const isBust = newScore < 2 || newScore < 0;
+
+            history[history.length - 1].push({
+                player: "Bot",
+                score: isBust ? 'BUST' : score,
+                darts: dartsUsed,
+                isCheckout,
+                isBust,
+                legIndex: history.length - 1
+            });
+
+            if (isCheckout) {
+                playerScores[1] = 0;
+                playerLegs[1]++;
+                handleLegWin({
+                    isMatchOver: playerLegs[1] >= legsToWin,
+                    winnerName: "Bot",
+                    resetScores: () => {
+                        playerScores = [startingScore, startingScore];
+                        currentPlayerIndex = 0;
+                    },
+                    latestScore: score
+                });
+            } else {
+                if (!isBust) playerScores[1] = newScore;
+                currentPlayerIndex = 0;
+                updateUI();
+            }
+        }
+
 
         let players = [];
         let playerScores = [];
@@ -308,14 +392,25 @@
             perDartScores = [null, null, null];
             dartIndex = 0;
             history.length = 0;
-            history.push([]); // Start first leg
+            history.push([]);
             currentPlayerIndex = 0;
             legsToWin = parseInt(document.getElementById('legs-input').value) || 1;
-            playerLegs = gameType === 'multi' ? [0, 0] : [0];
+            playerLegs = gameType === 'multi' || gameType === 'bot' ? [0, 0] : [0];
+
+            const difficulty = document.getElementById('difficulty-select')?.value || 'medium';
 
             if (gameType === 'multi') {
+                players = [
+                    document.getElementById('player1-name').value.trim() || "Player 1",
+                    document.getElementById('player2-name').value.trim() || "Player 2"
+                ];
                 playerScores = [startingScore, startingScore];
+            } else if (gameType === 'bot') {
+                players = ["You", "Bot"];
+                playerScores = [startingScore, startingScore];
+                botDifficulty = difficulty;
             } else {
+                players = ["You"];
                 currentScore = startingScore;
             }
 
@@ -324,6 +419,7 @@
             gameScreen.classList.remove('d-none');
             updateUI();
         }
+
 
 
 
@@ -340,52 +436,52 @@
         }
 
 
-
         function submitScore() {
-            const score = parseInt(inputBuffer);
-            if (isNaN(score) || score < 0 || score > 180) {
-                alert("Please enter a valid score between 0 and 180.");
+            const score = parseInt(inputBuffer, 10);
+            const playerName = gameType === 'multi' || gameType === 'bot' ? players[currentPlayerIndex] : "You";
+            const current = gameType === 'multi' || gameType === 'bot' ? playerScores[currentPlayerIndex] : currentScore;
+
+            if (isNaN(score)) {
+                alert("Invalid score.");
                 return;
             }
 
-            let current = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
             const newScore = current - score;
 
-            // 💥 Attempted checkout
-            if (newScore === 0 && score <= 170 && !bogeyNumbers.includes(current)) {
-                const finalDartDouble = confirm("Did you finish on a double or the bull?");
+            const isDoubleOrBull = (score === 50 || score % 2 === 0); // Simplified assumption for total score mode
+            const isCheckout = newScore === 0 && isDoubleOrBull && !bogeyNumbers.includes(current);
 
-                if (!finalDartDouble) {
-                    alert("Invalid checkout! Turn is a bust.");
-                    history[history.length - 1].push({
-                        player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                        score: 'BUST',
-                        darts: 3,
-                        isCheckout: false,
-                        isBust: true,
-                        legIndex: history.length - 1
-                    });
-
-                    if (gameType === 'multi') {
-                        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
-                    }
-
-                    inputBuffer = '';
-                    updateUI();
-                    return;
-                }
-
-                // ✅ Valid checkout
+            if (newScore < 0 || (newScore === 0 && !isCheckout)) {
                 history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                    score: score,
+                    player: playerName,
+                    score: 'BUST',
                     darts: 3,
-                    isCheckout: true,
-                    isBust: false,
+                    isCheckout: false,
+                    isBust: true,
                     legIndex: history.length - 1
                 });
 
-                if (gameType === 'multi') {
+                if (gameType === 'multi' || gameType === 'bot') {
+                    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+                }
+
+                inputBuffer = '';
+                updateUI();
+                return;
+            }
+
+            // Successful score
+            history[history.length - 1].push({
+                player: playerName,
+                score: score,
+                darts: 3,
+                isCheckout: newScore === 0,
+                isBust: false,
+                legIndex: history.length - 1
+            });
+
+            if (newScore === 0) {
+                if (gameType === 'multi' || gameType === 'bot') {
                     playerScores[currentPlayerIndex] = 0;
                     playerLegs[currentPlayerIndex]++;
                     handleLegWin({
@@ -397,7 +493,6 @@
                         },
                         latestScore: score
                     });
-                    return;
                 } else {
                     currentScore = 0;
                     playerLegs[0]++;
@@ -409,54 +504,31 @@
                         },
                         latestScore: score
                     });
-                    return;
-                }
-            }
-
-            // 💥 Bust logic
-            if (newScore < 2 || newScore < 0) {
-                history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                    score: 'BUST',
-                    darts: 3,
-                    isCheckout: false,
-                    isBust: true,
-                    legIndex: history.length - 1
-                });
-
-                if (gameType === 'multi') {
-                    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
                 }
 
-                inputBuffer = '';
-                updateUI();
+                if (gameType === 'bot' && currentPlayerIndex === 1) {
+                    setTimeout(botTurn, 1000);
+                }
+
                 return;
             }
 
-            // ✅ Valid normal score
-            if (gameType === 'multi') {
+            // Update score if not checkout
+            if (gameType === 'multi' || gameType === 'bot') {
                 playerScores[currentPlayerIndex] = newScore;
+                currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
             } else {
                 currentScore = newScore;
             }
 
-            history[history.length - 1].push({
-                player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                score: score,
-                darts: 3,
-                isCheckout: false,
-                isBust: false,
-                legIndex: history.length - 1
-            });
-
-            inputBuffer = '';
-
-            if (gameType === 'multi') {
-                currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+            if (gameType === 'bot' && currentPlayerIndex === 1) {
+                setTimeout(botTurn, 1000);
             }
 
+            inputBuffer = '';
             updateUI();
         }
+
 
 
 
@@ -633,7 +705,7 @@
 
             let actual;
             if (base === 25 || base === 50) {
-                actual = base; // Ignore multiplier
+                actual = base; // Multiplier doesn't apply
             } else {
                 actual = base;
                 if (multiplier === 'Double') actual *= 2;
@@ -644,17 +716,18 @@
             dartIndex++;
 
             const totalSoFar = perDartScores.reduce((sum, s) => sum + (s || 0), 0);
-            let current = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
+            let current = gameType === 'multi' || gameType === 'bot' ? playerScores[currentPlayerIndex] : currentScore;
             const newScore = current - totalSoFar;
 
-            // Bust conditions
+            const playerName = gameType === 'multi' || gameType === 'bot' ? players[currentPlayerIndex] : "You";
+
             const lastDart = perDartScores[dartIndex - 1];
             const isDoubleOrBull = (lastDart === 50 || (lastDart % 2 === 0 && lastDart <= 40));
             const isCheckout = newScore === 0 && isDoubleOrBull && !bogeyNumbers.includes(current);
 
             if (newScore < 0 || (newScore === 0 && !isCheckout)) {
                 history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    player: playerName,
                     score: 'BUST',
                     darts: dartIndex,
                     isCheckout: false,
@@ -662,7 +735,7 @@
                     legIndex: history.length - 1
                 });
 
-                if (gameType === 'multi') {
+                if (gameType === 'multi' || gameType === 'bot') {
                     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
                 }
 
@@ -675,7 +748,7 @@
 
             if (isCheckout) {
                 history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    player: playerName,
                     score: totalSoFar,
                     darts: dartIndex,
                     isCheckout: true,
@@ -683,7 +756,7 @@
                     legIndex: history.length - 1
                 });
 
-                if (gameType === 'multi') {
+                if (gameType === 'multi' || gameType === 'bot') {
                     playerScores[currentPlayerIndex] = 0;
                     playerLegs[currentPlayerIndex]++;
                     handleLegWin({
@@ -707,19 +780,23 @@
                         latestScore: totalSoFar
                     });
                 }
+
+                if (gameType === 'bot' && currentPlayerIndex === 1) {
+                    setTimeout(botTurn, 1000);
+                }
+
                 return;
             }
 
-            // If 3 darts used, save as normal score
             if (dartIndex === 3) {
-                if (gameType === 'multi') {
+                if (gameType === 'multi' || gameType === 'bot') {
                     playerScores[currentPlayerIndex] = newScore;
                 } else {
                     currentScore = newScore;
                 }
 
                 history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    player: playerName,
                     score: totalSoFar,
                     darts: 3,
                     isCheckout: false,
@@ -727,8 +804,12 @@
                     legIndex: history.length - 1
                 });
 
-                if (gameType === 'multi') {
+                if (gameType === 'multi' || gameType === 'bot') {
                     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+                }
+
+                if (gameType === 'bot' && currentPlayerIndex === 1) {
+                    setTimeout(botTurn, 1000);
                 }
 
                 perDartScores = [null, null, null];
@@ -738,7 +819,6 @@
             updateUI();
             updateCheckoutSuggestion(getPartialScore());
         }
-
 
 
 
@@ -873,7 +953,7 @@
             const historyList = document.getElementById('score-history');
             historyList.innerHTML = '';
 
-            if (gameType === 'multi') {
+            if (gameType === 'multi' || gameType === 'bot') {
                 const row = document.createElement('div');
                 row.className = 'row';
 
@@ -936,14 +1016,11 @@
         }
 
 
-
-
-
         function renderPlayerScores() {
             const playersContainer = document.getElementById('players');
             playersContainer.innerHTML = '';
 
-            if (gameType === 'multi') {
+            if (gameType === 'multi' || gameType === 'bot') {
                 players.forEach((name, index) => {
                     // Compute player's total darts and score (excluding busts)
                     const entries = history.flat().filter(h => h.player === name && !h.isBust);
@@ -970,6 +1047,14 @@
         `;
             }
         }
+
+
+
+
+
+
+
+
 
 
         // Show game type picker on load
