@@ -241,6 +241,16 @@
         </div>
     </div>
 
+    <div id="stats-screen" class="container py-5 d-none">
+        <h1 class="text-center mb-4">🎯 Match Stats</h1>
+        <div id="stats-container" class="row">
+            <!-- Stats for each player will be injected here -->
+        </div>
+        <div class="text-center mt-4">
+            <button class="btn btn-primary" onclick="goToMenu()">Back to Menu</button>
+        </div>
+    </div>
+
     <script>
         let legsToWin = 1;
         let playerLegs = [];
@@ -330,6 +340,7 @@
         }
 
 
+
         function submitScore() {
             const score = parseInt(inputBuffer);
             if (isNaN(score) || score < 0 || score > 180) {
@@ -344,6 +355,14 @@
 
             if (isValidCheckout) {
                 const latestScore = score;
+
+                history[history.length - 1].push({
+                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    score: score,
+                    darts: 3,
+                    isCheckout: true,
+                    legIndex: history.length - 1
+                });
 
                 if (gameType === 'multi') {
                     playerScores[currentPlayerIndex] = 0;
@@ -382,8 +401,12 @@
 
                 history[history.length - 1].push({
                     player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                    score: score
+                    score: score,
+                    darts: 3,
+                    isCheckout: false,
+                    legIndex: history.length - 1
                 });
+
                 inputBuffer = '';
 
                 if (gameType === 'multi') {
@@ -395,7 +418,6 @@
                 alert("Score too high! You can't go below zero.");
             }
         }
-
 
 
 
@@ -451,16 +473,11 @@
 
         function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
             if (isMatchOver) {
-                document.getElementById('win-screen').classList.remove('d-none');
-                document.getElementById('win-screen').innerHTML = `
-                    <strong>🎉 ${winnerName} wins the match!</strong>
-                `;
+                gameScreen.classList.add('d-none');
+                document.getElementById('stats-screen').classList.remove('d-none');
+                renderMatchStats();
             } else {
                 alert(`${winnerName} won the leg!`);
-                history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                    score: latestScore
-                });
                 resetScores();
                 history.push([]);
                 inputBuffer = '';
@@ -468,13 +485,104 @@
             }
         }
 
+        function renderMatchStats() {
+            const container = document.getElementById('stats-container');
+            container.innerHTML = '';
+
+            const allPlayers = gameType === 'multi' ? players : ['You'];
+
+            allPlayers.forEach(playerName => {
+                const playerScores = history.flat().filter(h => h.player === playerName);
+                const legsByPlayer = history.map((leg, index) => {
+                    return leg.filter(h => h.player === playerName).map(entry => ({
+                        ...entry,
+                        legIndex: index
+                    }));
+                }).filter(leg => leg.length > 0);
+
+                let totalScore = 0;
+                let totalDarts = 0;
+                let firstNineTotal = 0;
+                let firstNineDarts = 0;
+                let checkoutAttempts = 0;
+                let checkouts = 0;
+                let highestFinish = 0;
+                let highestScore = 0;
+                let bestLeg = Infinity;
+                let worstLeg = 0;
+
+                legsByPlayer.forEach(leg => {
+                    let legScore = 0;
+                    let legDarts = 0;
+
+                    leg.forEach((entry, i) => {
+                        totalScore += entry.score;
+                        totalDarts += entry.darts;
+                        legScore += entry.score;
+                        legDarts += entry.darts;
+
+                        if (i < 3) {
+                            firstNineTotal += entry.score;
+                            firstNineDarts += entry.darts;
+                        }
+
+                        if (entry.isCheckout) {
+                            checkouts++;
+                            if (entry.score > highestFinish) highestFinish = entry.score;
+                        }
+
+                        if (entry.score > highestScore) highestScore = entry.score;
+                    });
+
+                    if (legDarts > 0) {
+                        if (legDarts < bestLeg) bestLeg = legDarts;
+                        if (legDarts > worstLeg) worstLeg = legDarts;
+                    }
+
+                    checkoutAttempts += 1;
+                });
+
+                const average = totalDarts ? (totalScore / totalDarts) * 3 : 0;
+                const first9avg = firstNineDarts ? (firstNineTotal / firstNineDarts) * 3 : 0;
+                const checkoutRate = checkoutAttempts ? (checkouts / checkoutAttempts) * 100 : 0;
+
+                const card = document.createElement('div');
+                card.className = 'col-md-6 mb-4';
+                card.innerHTML = `
+                    <div class="card">
+                        <div class="card-body">
+                            <h4 class="card-title text-center">${playerName}</h4>
+                            <ul class="list-group list-group-flush mt-3">
+                                <li class="list-group-item">3-Dart Average: <strong>${average.toFixed(2)}</strong></li>
+                                <li class="list-group-item">First 9 Average: <strong>${first9avg.toFixed(2)}</strong></li>
+                                <li class="list-group-item">Checkout Rate: <strong>${checkoutRate.toFixed(1)}%</strong></li>
+                                <li class="list-group-item">Checkouts: <strong>${checkouts}</strong></li>
+                                <li class="list-group-item">Highest Finish: <strong>${highestFinish}</strong></li>
+                                <li class="list-group-item">Highest Score: <strong>${highestScore}</strong></li>
+                                <li class="list-group-item">Best Leg (fewest darts): <strong>${isFinite(bestLeg) ? bestLeg : '-'}</strong></li>
+                                <li class="list-group-item">Worst Leg (most darts): <strong>${worstLeg || '-'}</strong></li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+
 
         function inputDart(base) {
             if (dartIndex >= 3) return;
 
-            let actual = base;
-            if (multiplier === 'Double') actual *= 2;
-            if (multiplier === 'Treble') actual *= 3;
+            let actual;
+            if (base === 25 || base === 50) {
+                actual = base; // Ignore multiplier for Outer/Bull
+            } else {
+                actual = base;
+                if (multiplier === 'Double') actual *= 2;
+                if (multiplier === 'Treble') actual *= 3;
+            }
 
             perDartScores[dartIndex] = actual;
             dartIndex++;
@@ -494,6 +602,14 @@
                     !bogeyNumbers.includes(current);
 
                 if (isValidCheckout) {
+                    history[history.length - 1].push({
+                        player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                        score: total,
+                        darts: 3,
+                        isCheckout: true,
+                        legIndex: history.length - 1
+                    });
+
                     if (gameType === 'multi') {
                         playerScores[currentPlayerIndex] = 0;
                         playerLegs[currentPlayerIndex]++;
@@ -526,9 +642,13 @@
                     } else {
                         currentScore = newScore;
                     }
+
                     history[history.length - 1].push({
                         player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
-                        score: total
+                        score: total,
+                        darts: 3,
+                        isCheckout: false,
+                        legIndex: history.length - 1
                     });
 
                     if (gameType === 'multi') {
