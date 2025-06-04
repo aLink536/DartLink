@@ -22,3 +22,14 @@ h1 {
     font-size: 2em;
     margin: 20px 0;
 }
+
+.dart-inputs {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.dart-row select {
+    margin: 0 5px;
+}

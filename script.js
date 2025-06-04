@@ -5,7 +5,7 @@ const scoreDisplay = document.getElementById('score-display');
 const gameTitle = document.getElementById('game-title');
 const submitBtn = document.getElementById('submit-score');
 const resetBtn = document.getElementById('reset-btn');
-const scoreInput = document.getElementById('score-input');
+const dartRows = document.querySelectorAll('.dart-row');
 
 let currentGame = null;
 let remainingScore = 0;
@@ -15,7 +15,10 @@ function startGame() {
     const selected = gameSelect.value;
     currentGame = selected;
     gameArea.classList.remove('hidden');
-    scoreInput.value = '';
+    dartRows.forEach(row => {
+        row.querySelector('.multiplier').value = '1';
+        row.querySelector('.value').value = '0';
+    });
 
     if (selected === '501' || selected === '301') {
         remainingScore = parseInt(selected, 10);
@@ -29,32 +32,52 @@ function startGame() {
 }
 
 function submitScore() {
-    const score = parseInt(scoreInput.value, 10) || 0;
+    let roundScore = 0;
+    const values = [];
+    dartRows.forEach(row => {
+        const mult = parseInt(row.querySelector('.multiplier').value, 10);
+        const val = parseInt(row.querySelector('.value').value, 10);
+        roundScore += mult * val;
+        values.push(val);
+    });
+
     if (currentGame === '501' || currentGame === '301') {
-        remainingScore -= score;
+        remainingScore -= roundScore;
         if (remainingScore <= 0) {
             scoreDisplay.textContent = 'Finished!';
         } else {
             scoreDisplay.textContent = `Remaining: ${remainingScore}`;
         }
     } else if (currentGame === 'clock') {
-        if (score === currentTarget) {
-            currentTarget += 1;
+        for (const val of values) {
+            if (val === currentTarget) {
+                currentTarget += 1;
+            }
             if (currentTarget > 20) {
-                scoreDisplay.textContent = 'Finished Around the Clock!';
-            } else {
-                scoreDisplay.textContent = `Hit number: ${currentTarget}`;
+                break;
             }
         }
+        if (currentTarget > 20) {
+            scoreDisplay.textContent = 'Finished Around the Clock!';
+        } else {
+            scoreDisplay.textContent = `Hit number: ${currentTarget}`;
+        }
     }
-    scoreInput.value = '';
+
+    dartRows.forEach(row => {
+        row.querySelector('.multiplier').value = '1';
+        row.querySelector('.value').value = '0';
+    });
 }
 
 function resetGame() {
     gameArea.classList.add('hidden');
     scoreDisplay.textContent = '';
     gameTitle.textContent = '';
-    scoreInput.value = '';
+    dartRows.forEach(row => {
+        row.querySelector('.multiplier').value = '1';
+        row.querySelector('.value').value = '0';
+    });
 }
 
 startBtn.addEventListener('click', startGame);
