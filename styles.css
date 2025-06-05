@@ -1,0 +1,371 @@
+/* ========================================================
+   🧱 THEME VARIABLES — MODERN FROSTED
+   ======================================================== */
+:root {
+  /* Base Theme */
+  --bg-color: #0e1117;
+  --text-color: #f4f4f4;
+  --card-bg: rgba(255, 255, 255, 0.1);
+  --input-bg: rgba(255, 255, 255, 0.08);
+  --input-border: rgba(255, 255, 255, 0.2);
+  --border-color: rgba(255, 255, 255, 0.15);
+
+  /* Frosted glass effect */
+  --glass-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.25);
+  --glass-blur: blur(12px);
+
+  /* Accent Colours */
+  --primary: #58a6ff;
+  --primary-dark: #2f81f7;
+  --secondary: #8ca3af;
+  /* calm blue-grey */
+  --secondary-dark: #6e7f8b;
+  /* darker on hover/active */
+  --success: #3fb950;
+  --warning: #f2cc60;
+  --danger: #ff6e6e;
+
+  /* Utility Colours */
+  --button-bg: rgba(255, 255, 255, 0.05);
+  --button-hover: rgba(255, 255, 255, 0.1);
+
+  --info-bg: rgba(88, 166, 255, 0.15);
+  --info-color: #b6daff;
+  --danger-bg: rgba(255, 110, 110, 0.15);
+  --danger-color: #ffb3b3;
+  --success-bg: rgba(63, 185, 80, 0.15);
+  --success-color: #acf2bd;
+
+  --score-box-bg: rgba(255, 255, 255, 0.05);
+  --score-box-active-bg: rgba(88, 166, 255, 0.15);
+}
+
+
+/* ========================================================
+   🧍 BASE STYLES
+   ======================================================== */
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.padded-container {
+  padding: 5%;
+}
+
+.text-primary {
+  color: var(--primary) !important;
+}
+
+
+/* ========================================================
+   📦 LAYOUT & CONTAINERS
+   ======================================================== */
+
+   #game-screen .card {
+    overflow: hidden;
+   }
+
+
+/* Fullscreen card on mobile */
+@media (max-width: 767.98px) {
+  .main-game-container .card {
+    border-radius: 0;
+    height: 100vh;
+    width: 100vw;
+    max-width: 100%;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .main-game-container .card-body {
+    flex: 1;
+    overflow-y: auto;
+  }
+}
+
+.card {
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  color: var(--text-color);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+}
+
+.card-header {
+  background-color: var(--glass-border);
+}
+
+.tab-content {
+  background-color: transparent;
+}
+
+.nav-tabs {
+  border-bottom: 1px solid var(--input-border);
+}
+
+
+/* ========================================================
+   🧾 FORM ELEMENTS
+   ======================================================== */
+.form-control {
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  border: 1px solid var(--input-border);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.form-control:focus {
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 0.2rem rgba(88, 166, 255, 0.25);
+}
+
+.form-control::placeholder {
+  color: var(--placeholder-color, #a7a7a7);
+  /* fallback to #666 if not defined */
+  opacity: 1;
+  /* ensures it's fully visible across browsers */
+}
+
+
+/* ========================================================
+   🔘 BUTTONS
+   ======================================================== */
+
+/* Light Button */
+.btn-light {
+  background-color: var(--button-bg);
+  color: var(--text-color);
+  border-color: var(--input-border);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+
+/* Solid Primary */
+.btn-primary {
+  background-color: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: var(--primary-dark) !important;
+  border-color: var(--primary-dark) !important;
+  color: #fff !important;
+}
+
+.btn-primary:active,
+.btn-primary.active {
+  background-color: var(--primary-dark);
+  border-color: var(--primary-dark);
+  color: #fff;
+}
+
+/* Solid Secondary */
+.btn-secondary {
+  background-color: var(--secondary) !important;
+  border-color: var(--secondary) !important;
+  color: #000 !important;
+}
+
+.btn-secondary:hover {
+  background-color: var(--secondary-dark) !important;
+  border-color: var(--secondary-dark) !important;
+}
+
+.btn-secondary:active,
+.btn-secondary.active {
+  background-color: var(--secondary-dark);
+  border-color: var(--secondary-dark);
+  color: #000;
+}
+
+/* Outline Primary */
+.btn-outline-primary {
+  color: var(--primary);
+  border-color: var(--primary);
+  background-color: transparent;
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:focus,
+.btn-outline-primary:active,
+.btn-outline-primary.active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* Outline Secondary */
+.btn-outline-secondary {
+  color: var(--secondary);
+  border-color: var(--secondary);
+  background-color: transparent;
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-secondary:focus,
+.btn-outline-secondary:active,
+.btn-outline-secondary.active {
+  background-color: var(--secondary);
+  border-color: var(--secondary);
+  color: #000;
+}
+
+/* Success / Warning */
+.btn-success {
+  background-color: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+.btn-warning {
+  background-color: var(--warning);
+  border-color: var(--warning);
+  color: #000;
+}
+
+
+/* ========================================================
+   🧭 NAVIGATION / TABS
+   ======================================================== */
+.nav-tabs .nav-link {
+  background-color: var(--button-bg);
+  color: var(--text-color);
+  border: 1px solid var(--input-border);
+  ;
+}
+
+.nav-tabs .nav-link.active {
+  background-color: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+
+/* ========================================================
+   📋 LISTS / HISTORY
+   ======================================================== */
+.list-group-item {
+  background-color: var(--glass-bg);
+  color: var(--text-color);
+  border-color: var(--glass-border);
+}
+
+.history {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+
+/* ========================================================
+   🚨 ALERTS
+   ======================================================== */
+.alert-info,
+.alert-success,
+.alert-danger {
+
+  border: 1px solid var(--glass-border);
+}
+
+
+/* ========================================================
+   🎯 DART SCORE BOXES
+   ======================================================== */
+.dart-score-boxes {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.dart-score-box {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  background-color: var(--score-box-bg);
+  color: var(--text-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: bold;
+  position: relative;
+  border: 1px solid var(--input-border);
+}
+
+.dart-score-box.active {
+  background-color: var(--score-box-active-bg);
+  border: 2px solid var(--primary);
+}
+
+.dart-score-box::before {
+  content: "586";
+  font-family: 'bootstrap-icons';
+  position: absolute;
+  top: -12px;
+  font-size: 1rem;
+}
+
+
+/* ========================================================
+   🔢 KEYPAD & INPUTS
+   ======================================================== */
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.keypad button,
+.per-dart-keypad button {
+  width: 100%;
+}
+
+
+/* ========================================================
+   🎛️ TOGGLE / TABS
+   ======================================================== */
+.multiplier-toggle .btn {
+  width: 33%;
+}
+
+.tab-content>.tab-pane {
+  display: none;
+}
+
+.tab-content>.active {
+  display: block;
+}
+
+/* ========================================================
+ Offcanvas Theming 
+======================================================== */
+
+.offcanvas {
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  border-left: 1px solid var(--border-color);
+  backdrop-filter: var(--glass-blur);
+}
+
+.offcanvas-header {
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--input-bg);
+}
+
+.offcanvas .btn-close {
+  filter: invert(1);
+  /* makes the close icon light on dark */
+}
