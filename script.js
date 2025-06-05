@@ -1,27 +1,40 @@
-let legsToWin = 1;
-let playerLegs = [];
-let startingScore = 501;
+// =====================================
+//  STATE & DOM REFERENCES
+// =====================================
+
+let legsToWin = 1;              // Legs required to win the match
+let playerLegs = [];            // Legs won by each player
+let startingScore = 501;        // Starting score for a leg
 let currentScore = startingScore;
-const gameScreen = document.getElementById('game-screen');
+
+const gameScreen  = document.getElementById('game-screen');
 const startScreen = document.getElementById('start-screen');
-const history = [[]]; // one sub-array per leg
-let inputBuffer = '';
-let inputMode = 'total';
+const modeScreen  = document.getElementById('mode-screen');
+
+const history = [[]];           // History of scores (one array per leg)
+
+let inputBuffer   = '';
+let inputMode     = 'total';    // 'total' or 'perdart'
 let perDartScores = [null, null, null];
-let dartIndex = 0;
-let multiplier = 'Single';
+let dartIndex     = 0;
+let multiplier    = 'Single';
 
 const bogeyNumbers = [159, 162, 163, 165, 166, 168, 169];
 
-const modeScreen = document.getElementById('mode-screen');
-let gameType = 'single'; // 'single' or 'multi'
+// =====================================
+//  GAME MODE SELECTION
+// =====================================
 
+let gameType = 'single';        // 'single' or 'multi'
+
+// User selects single or multiplayer
 function selectGameType(type) {
     gameType = type;
     document.getElementById('single-tab').classList.toggle('active', type === 'single');
     document.getElementById('multi-tab').classList.toggle('active', type === 'multi');
 }
 
+// After selecting game type proceed to next screen
 function proceedToGameMode() {
     modeScreen.classList.add('d-none');
     if (gameType === 'multi') {
@@ -31,10 +44,15 @@ function proceedToGameMode() {
     }
 }
 
+// =====================================
+//  PLAYER SETUP
+// =====================================
+
 let players = [];
 let playerScores = [];
 let currentPlayerIndex = 0;
 
+// Capture player names and move to the game options
 function continueToGameModes() {
     const name1 = document.getElementById('player1-name').value.trim() || "Player 1";
     const name2 = document.getElementById('player2-name').value.trim() || "Player 2";
@@ -46,7 +64,9 @@ function continueToGameModes() {
     startScreen.classList.remove('d-none');
 }
 
-
+// =====================================
+//  GAME INITIALISATION
+// =====================================
 
 function startGame(mode) {
     startingScore = parseInt(mode);
@@ -72,6 +92,9 @@ function startGame(mode) {
 }
 
 
+// =====================================
+//  SCORE INPUT (TOTAL MODE)
+// =====================================
 
 function appendScore(digit) {
     if (inputBuffer.length < 3) {
@@ -80,13 +103,13 @@ function appendScore(digit) {
     }
 }
 
+// Remove entered digits in total mode
 function clearScore() {
     inputBuffer = '';
     updateUI();
 }
 
-
-
+// Submit the total score for the turn
 function submitScore() {
     const score = parseInt(inputBuffer);
     if (isNaN(score) || score < 0 || score > 180) {
@@ -212,6 +235,7 @@ function submitScore() {
 
 
 
+// Use Web Speech API to announce the score
 function speakScore(playerName, score) {
     if ('speechSynthesis' in window) {
         speechSynthesis.cancel(); // stop any previous speech
@@ -222,23 +246,31 @@ function speakScore(playerName, score) {
 }
 
 
+// Revert the last submitted score
 function undoScore() {
     const currentLegHistory = history[history.length - 1];
-    if (currentLegHistory.length > 0) {
-        const lastScore = currentLegHistory.pop();
-        if (gameType === 'multi') {
-            currentPlayerIndex = (currentPlayerIndex - 1 + players.length) % players.length;
-            playerScores[currentPlayerIndex] += lastScore;
-        } else {
-            currentScore += lastScore;
-        }
-        updateUI();
-    } else {
+    if (currentLegHistory.length === 0) {
         alert("Nothing to undo in this leg.");
+        return;
     }
+
+    const lastEntry = currentLegHistory.pop();
+    const scoreToRestore = typeof lastEntry.score === 'number' ? lastEntry.score : 0;
+
+    if (gameType === 'multi') {
+        currentPlayerIndex = (currentPlayerIndex - 1 + players.length) % players.length;
+        if (!lastEntry.isBust) {
+            playerScores[currentPlayerIndex] += scoreToRestore;
+        }
+    } else if (!lastEntry.isBust) {
+        currentScore += scoreToRestore;
+    }
+
+    updateUI();
 }
 
 
+// Remove the last dart entered in per-dart mode
 function undoLastDart() {
     if (dartIndex > 0) {
         dartIndex--;
@@ -248,10 +280,12 @@ function undoLastDart() {
     }
 }
 
+// Sum of darts entered this turn
 function getPartialScore() {
     return perDartScores.reduce((sum, dart) => sum + (dart || 0), 0);
 }
 
+// Switch between total entry and per-dart entry modes
 function setInputMode(mode) {
     inputMode = mode;
     inputBuffer = '';
@@ -264,6 +298,7 @@ function setInputMode(mode) {
     updateUI();
 }
 
+// Highlight selected multiplier for per-dart input
 function setMultiplier(value) {
     multiplier = value;
     document.querySelectorAll('.btn-group .btn').forEach(btn => {
@@ -271,6 +306,7 @@ function setMultiplier(value) {
     });
 }
 
+// Called when a leg is won
 function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
     // ✅ Always reset per dart state after a leg win
     perDartScores = [null, null, null];
@@ -289,6 +325,7 @@ function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
     }
 }
 
+// Display end-of-match statistics
 function renderMatchStats() {
     const container = document.getElementById('stats-container');
     container.innerHTML = '';
@@ -388,6 +425,7 @@ function renderMatchStats() {
 
 
 
+// Handle a single dart input in per-dart mode
 function inputDart(base) {
     if (dartIndex >= 3) return;
 
@@ -507,6 +545,7 @@ function inputDart(base) {
 
 
 
+// Lookup table for checkout routes
 function getCheckoutSuggestion(score) {
     const checkouts = {
         170: "T20, T20, Bull", 167: "T20, T19, Bull", 164: "T20, T18, Bull",
@@ -558,6 +597,7 @@ function getCheckoutSuggestion(score) {
     return checkouts[score] || null;
 }
 
+// Display a suggested checkout route (if any)
 function updateCheckoutSuggestion(scoreOverride = null) {
     const activeScore = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
     const score = scoreOverride !== null ? activeScore - scoreOverride : activeScore;
@@ -582,6 +622,7 @@ function updateCheckoutSuggestion(scoreOverride = null) {
 }
 
 
+// Reset state and return to the menu screens
 function goToMenu() {
     const confirmReset = confirm("Are you sure you want to quit the game and return to the main menu?");
     if (!confirmReset) return;
@@ -618,6 +659,7 @@ function goToMenu() {
 
 
 
+// Refresh on-screen values
 function updateUI() {
     renderPlayerScores();
 
@@ -706,6 +748,7 @@ function updateUI() {
 
 
 
+// Draw the player score panel(s)
 function renderPlayerScores() {
     const playersContainer = document.getElementById('players');
     playersContainer.innerHTML = '';
@@ -744,4 +787,5 @@ modeScreen.classList.remove('d-none');
 startScreen.classList.add('d-none');
 gameScreen.classList.add('d-none');
 
+// Kick things off
 updateUI();
