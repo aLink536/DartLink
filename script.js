@@ -618,10 +618,6 @@ function inputDart(base) {
 }
 
 
-
-
-
-
 // Lookup table for checkout routes
 function getCheckoutSuggestion(score) {
     const checkouts = {
@@ -840,7 +836,10 @@ function renderPlayerScores() {
 
             const playerDiv = document.createElement('div');
             const isActive = index === currentPlayerIndex;
-            const isMyTurnNow = gameType !== 'online' || players[currentPlayerIndex] === onlinePlayerName;
+            const isMyTurnNow = gameType !== 'online' ||
+                (isHost && index === currentPlayerIndex) ||
+                (!isHost && players[index] === onlinePlayerName && index === currentPlayerIndex);
+
             playerDiv.className = `text-center flex-fill ${isActive && isMyTurnNow ? 'fw-bold text-primary' : ''}`;
 
             playerDiv.innerHTML = `
@@ -875,11 +874,21 @@ function createOnlineLobby() {
     isHost = true;
     const lobbyCode = generateLobbyCode();
     const lobbyRef = firebase.database().ref(`lobbies/${lobbyCode}`);
+    let hasSetRemoteAnswer = false;
 
-    peerConnection = new RTCPeerConnection();
+    peerConnection = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
 
     dataChannel = peerConnection.createDataChannel("dartlink");
     setupDataChannel();
+
+    peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+            firebase.database().ref(`lobbies/${lobbyCode}/candidates/host`)
+                .push(JSON.stringify(event.candidate));
+        }
+    };
 
     peerConnection.createOffer().then(offer => {
         return peerConnection.setLocalDescription(offer).then(() => offer);
@@ -892,41 +901,74 @@ function createOnlineLobby() {
     }).then(() => {
         alert(`Lobby created! Share this code: ${lobbyCode}`);
 
-        // ⬇️ Transition to name input screen
         document.getElementById('mode-screen').classList.add('d-none');
         document.getElementById('online-options').classList.add('d-none');
         document.getElementById('online-name-screen').classList.remove('d-none');
 
-        // ⬇️ Listen for answer from guest
+        // ✅ Answer handler with explicit state check and catch
         lobbyRef.on("value", snapshot => {
             const data = snapshot.val();
-            if (data && data.answer && !peerConnection.currentRemoteDescription) {
+            if (data && data.answer && !hasSetRemoteAnswer) {
                 const answer = JSON.parse(data.answer);
-                peerConnection.setRemoteDescription(answer);
+
+                if (peerConnection.signalingState === "have-local-offer") {
+                    peerConnection.setRemoteDescription(answer)
+                        .then(() => {
+                            hasSetRemoteAnswer = true;
+                            console.log("✅ Host set remote answer");
+                        })
+                        .catch(err => {
+                            console.warn("❌ Remote answer rejected (likely already stable):", err.message);
+                        });
+                } else {
+                    console.warn("⚠️ Ignored remote answer — state:", peerConnection.signalingState);
+                }
             }
         });
+
+        firebase.database().ref(`lobbies/${lobbyCode}/candidates/guest`)
+            .on("child_added", snapshot => {
+                const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
+                peerConnection.addIceCandidate(candidate).catch(err => {
+                    console.error("❌ Error adding ICE candidate (guest):", err);
+                });
+            });
     }).catch(err => {
         alert("Error setting up host: " + err.message);
+        console.error("❌ Host setup error:", err);
     });
 }
+
+
+
+
 
 function isMyTurn() {
     if (gameType !== 'online') return true;
     return players[currentPlayerIndex] === onlinePlayerName;
 }
 
-
 function setupDataChannel() {
     dataChannel.onopen = () => {
         console.log("✅ DataChannel open!");
-        dataChannel.send(JSON.stringify({ type: "hello", from: "host" }));
+
+        if (isHost) {
+            dataChannel.send(JSON.stringify({ type: "hello", from: "host" }));
+        } else {
+            // ✅ Guest resends name if already entered
+            if (onlinePlayerName) {
+                dataChannel.send(JSON.stringify({
+                    type: "name",
+                    name: onlinePlayerName
+                }));
+            }
+        }
     };
 
     dataChannel.onmessage = (event) => {
         const message = JSON.parse(event.data);
         console.log("📩 Received:", message);
 
-        // 🎯 Start game from host
         if (message.type === "start-game") {
             startingScore = message.mode;
             legsToWin = message.legs;
@@ -951,8 +993,10 @@ function setupDataChannel() {
         }
 
         if (message.type === "name") {
-            remotePlayerName = message.name;
-            checkIfBothNamesSet();
+            if (isHost) {
+                remotePlayerName = message.name;
+                checkIfBothNamesSet();
+            }
         }
 
         if (message.type === "leg-win") {
@@ -974,7 +1018,6 @@ function setupDataChannel() {
             }
         }
 
-        // 🧮 Score update from remote player
         if (message.type === "score") {
             const playerName = players[message.playerIndex];
             const current = playerScores[message.playerIndex];
@@ -1005,22 +1048,23 @@ function setupDataChannel() {
             updateUI();
         }
 
-        // 🔄 Undo last score entry
         if (message.type === "undo") {
             undoScore();
         }
-
-        // You can add more types here later: "checkout", "win", "chat", etc.
     };
 
     dataChannel.onerror = (err) => {
-        console.error("DataChannel error:", err);
+        console.error("❌ DataChannel error:", err);
+        alert("Connection error. The game may not continue.");
     };
 
     dataChannel.onclose = () => {
-        console.log("❌ DataChannel closed");
+        console.warn("❌ DataChannel closed");
+        alert("Your opponent has disconnected. Returning to menu.");
+        goToMenu();
     };
 }
+
 
 
 
@@ -1038,15 +1082,31 @@ function joinOnlineLobby() {
             throw new Error("Invalid or inactive lobby code.");
         }
 
-        peerConnection = new RTCPeerConnection();
+        console.log("📥 Guest received offer from Firebase:", data.offer);
 
+        peerConnection = new RTCPeerConnection({
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        });
+
+        // ✅ Step 1: Listen for incoming data channel
         peerConnection.ondatachannel = event => {
+            console.log("📡 Guest received dataChannel from host");
             dataChannel = event.channel;
             setupDataChannel();
         };
 
+        // ✅ Step 2: Send ICE candidates to Firebase
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                firebase.database().ref(`lobbies/${lobbyCode}/candidates/guest`)
+                    .push(JSON.stringify(event.candidate));
+            }
+        };
+
+        // ✅ Step 3: Apply remote offer and create answer
         const offer = JSON.parse(data.offer);
         return peerConnection.setRemoteDescription(offer).then(() => {
+            console.log("✅ Guest set remote description");
             return peerConnection.createAnswer();
         }).then(answer => {
             return peerConnection.setLocalDescription(answer).then(() => answer);
@@ -1058,34 +1118,48 @@ function joinOnlineLobby() {
     }).then(() => {
         alert("✅ Connected to host!");
 
-        // ⬇️ Transition to name input screen
+        // ⬇️ Show name input screen
         document.getElementById('mode-screen').classList.add('d-none');
         document.getElementById('online-options').classList.add('d-none');
         document.getElementById('online-name-screen').classList.remove('d-none');
+
+        // ✅ Step 4: Listen for host ICE candidates
+        firebase.database().ref(`lobbies/${lobbyCode}/candidates/host`)
+            .on("child_added", snapshot => {
+                const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
+                peerConnection.addIceCandidate(candidate);
+            });
     }).catch(err => {
         alert("Failed to join lobby: " + err.message);
+        console.error(err);
     });
 }
 
 
+
+
 function checkIfBothNamesSet() {
     if (onlinePlayerName && remotePlayerName) {
-        players = [onlinePlayerName, remotePlayerName];
+        players = isHost
+            ? [onlinePlayerName, remotePlayerName]
+            : [remotePlayerName, onlinePlayerName];
 
-        document.getElementById('online-name-screen').classList.add('d-none');
-
-        if (peerConnection && dataChannel && dataChannel.readyState === "open" && dataChannel.label === "dartlink") {
-            if (isHost) {
-                document.getElementById('start-screen').classList.remove('d-none');
-            } else {
-                const waiting = document.createElement('div');
-                waiting.className = "text-muted py-4";
-                waiting.innerHTML = "<em>Waiting for host to choose a game mode...</em>";
-                document.getElementById('online-name-screen').appendChild(waiting);
-            }
+        // Host goes to start screen to pick game mode
+        if (isHost) {
+            document.getElementById('online-name-screen').classList.add('d-none');
+            document.getElementById('start-screen').classList.remove('d-none');
+        } else {
+            // Guest sees "waiting for host" message
+            const screen = document.getElementById('online-name-screen');
+            screen.innerHTML = `
+                <h1 class="mb-4">Online Match</h1>
+                <p class="lead">Welcome, ${onlinePlayerName}</p>
+                <div class="text-muted py-4"><em>Waiting for host to choose a game mode...</em></div>
+            `;
         }
     }
 }
+
 
 
 
