@@ -288,8 +288,6 @@ function speakScore(playerName, score) {
     }
 }
 
-
-// Revert the last submitted score
 function undoScore() {
     const currentLegHistory = history[history.length - 1];
     if (currentLegHistory.length === 0) {
@@ -300,8 +298,9 @@ function undoScore() {
     const lastEntry = currentLegHistory.pop();
     const scoreToRestore = typeof lastEntry.score === 'number' ? lastEntry.score : 0;
 
-    if (gameType === 'multi') {
+    if (gameType === 'multi' || gameType === 'online') {
         currentPlayerIndex = (currentPlayerIndex - 1 + players.length) % players.length;
+
         if (!lastEntry.isBust) {
             playerScores[currentPlayerIndex] += scoreToRestore;
         }
@@ -310,7 +309,15 @@ function undoScore() {
     }
 
     updateUI();
+
+    // 🔁 Send undo to opponent
+    if (gameType === 'online' && dataChannel?.readyState === "open") {
+        dataChannel.send(JSON.stringify({
+            type: "undo"
+        }));
+    }
 }
+
 
 
 // Remove the last dart entered in per-dart mode
@@ -349,11 +356,21 @@ function setMultiplier(value) {
     });
 }
 
-// Called when a leg is won
 function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
     // ✅ Always reset per dart state after a leg win
     perDartScores = [null, null, null];
     dartIndex = 0;
+
+    // 🔁 Sync with opponent if online
+    if (gameType === 'online' && dataChannel?.readyState === "open") {
+        const msg = {
+            type: "leg-win",
+            isMatchOver,
+            winnerName,
+            latestScore
+        };
+        dataChannel.send(JSON.stringify(msg));
+    }
 
     if (isMatchOver) {
         gameScreen.classList.add('d-none');
@@ -367,6 +384,7 @@ function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
         updateUI();
     }
 }
+
 
 // Display end-of-match statistics
 function renderMatchStats() {
@@ -470,6 +488,7 @@ function renderMatchStats() {
 
 // Handle a single dart input in per-dart mode
 function inputDart(base) {
+    if (!isMyTurn()) return;
     if (dartIndex >= 3) return;
 
     let actual;
@@ -485,14 +504,15 @@ function inputDart(base) {
     dartIndex++;
 
     const totalSoFar = perDartScores.reduce((sum, s) => sum + (s || 0), 0);
-    let current = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
+    let current = gameType === 'multi' || gameType === 'online' ? playerScores[currentPlayerIndex] : currentScore;
     const newScore = current - totalSoFar;
 
-    const playerName = gameType === 'multi' ? players[currentPlayerIndex] : "You";
+    const playerName = gameType === 'multi' || gameType === 'online' ? players[currentPlayerIndex] : "You";
     const lastDart = perDartScores[dartIndex - 1];
     const isDoubleOrBull = (lastDart === 50 || (lastDart % 2 === 0 && lastDart <= 40));
     const isCheckout = newScore === 0 && isDoubleOrBull && !bogeyNumbers.includes(current);
 
+    // 💥 Bust
     if (newScore < 0 || (newScore === 0 && !isCheckout)) {
         history[history.length - 1].push({
             player: playerName,
@@ -503,7 +523,7 @@ function inputDart(base) {
             legIndex: history.length - 1
         });
 
-        if (gameType === 'multi') {
+        if (gameType === 'multi' || gameType === 'online') {
             currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
         }
 
@@ -514,6 +534,7 @@ function inputDart(base) {
         return;
     }
 
+    // ✅ Checkout
     if (isCheckout) {
         history[history.length - 1].push({
             player: playerName,
@@ -526,7 +547,7 @@ function inputDart(base) {
 
         speakScore(playerName, totalSoFar);
 
-        if (gameType === 'multi') {
+        if (gameType === 'multi' || gameType === 'online') {
             playerScores[currentPlayerIndex] = 0;
             playerLegs[currentPlayerIndex]++;
             handleLegWin({
@@ -553,8 +574,9 @@ function inputDart(base) {
         return;
     }
 
+    // ✅ Normal score, after 3 darts
     if (dartIndex === 3) {
-        if (gameType === 'multi') {
+        if (gameType === 'multi' || gameType === 'online') {
             playerScores[currentPlayerIndex] = newScore;
         } else {
             currentScore = newScore;
@@ -571,7 +593,17 @@ function inputDart(base) {
 
         speakScore(playerName, totalSoFar);
 
-        if (gameType === 'multi') {
+        // 🔁 Sync score with opponent
+        if (gameType === 'online' && dataChannel?.readyState === "open") {
+            const msg = {
+                type: "score",
+                score: totalSoFar,
+                playerIndex: currentPlayerIndex
+            };
+            dataChannel.send(JSON.stringify(msg));
+        }
+
+        if (gameType === 'multi' || gameType === 'online') {
             currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
         }
 
@@ -881,7 +913,6 @@ function isMyTurn() {
 }
 
 
-
 function setupDataChannel() {
     dataChannel.onopen = () => {
         console.log("✅ DataChannel open!");
@@ -916,6 +947,25 @@ function setupDataChannel() {
             updateUI();
         }
 
+        if (message.type === "leg-win") {
+            alert(`${message.winnerName} won the leg!`);
+
+            playerScores = [startingScore, startingScore];
+            currentPlayerIndex = 0;
+            history.push([]);
+            inputBuffer = '';
+            perDartScores = [null, null, null];
+            dartIndex = 0;
+
+            if (message.isMatchOver) {
+                gameScreen.classList.add('d-none');
+                document.getElementById('stats-screen').classList.remove('d-none');
+                renderMatchStats();
+            } else {
+                updateUI();
+            }
+        }
+
         // 🧮 Score update from remote player
         if (message.type === "score") {
             const playerName = players[message.playerIndex];
@@ -947,7 +997,12 @@ function setupDataChannel() {
             updateUI();
         }
 
-        // You can add more types here later: "bust", "checkout", "undo", etc.
+        // 🔄 Undo last score entry
+        if (message.type === "undo") {
+            undoScore();
+        }
+
+        // You can add more types here later: "checkout", "win", "chat", etc.
     };
 
     dataChannel.onerror = (err) => {
@@ -958,6 +1013,7 @@ function setupDataChannel() {
         console.log("❌ DataChannel closed");
     };
 }
+
 
 
 
@@ -1025,6 +1081,19 @@ function checkIfBothNamesSet() {
     }
 }
 
+
+function submitOnlineName() {
+    onlinePlayerName = document.getElementById('online-player-name').value.trim() || "Player";
+
+    if (dataChannel?.readyState === "open") {
+        dataChannel.send(JSON.stringify({
+            type: "name",
+            name: onlinePlayerName
+        }));
+    }
+
+    checkIfBothNamesSet();
+}
 
 
 
