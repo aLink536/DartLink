@@ -1,7 +1,8 @@
 // =====================================
 //  STATE & DOM REFERENCES
 // =====================================
-
+let onlinePlayerName = "";
+let remotePlayerName = "";
 let peerConnection = null;
 let dataChannel = null;
 let legsToWin = 1;              // Legs required to win the match
@@ -945,6 +946,11 @@ function setupDataChannel() {
             setInputMode('total');
             setMultiplier('Single');
             updateUI();
+        }
+        
+        if (message.type === "name") {
+            remotePlayerName = message.name;
+            checkIfBothNamesSet();
         }
 
         if (message.type === "leg-win") {
