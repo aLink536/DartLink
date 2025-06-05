@@ -3,6 +3,7 @@
 // =====================================
 let onlinePlayerName = "";
 let remotePlayerName = "";
+let isHost = false;
 let peerConnection = null;
 let dataChannel = null;
 let legsToWin = 1;              // Legs required to win the match
@@ -871,6 +872,7 @@ function generateLobbyCode(length = 5) {
 }
 
 function createOnlineLobby() {
+    isHost = true;
     const lobbyCode = generateLobbyCode();
     const lobbyRef = firebase.database().ref(`lobbies/${lobbyCode}`);
 
@@ -947,7 +949,7 @@ function setupDataChannel() {
             setMultiplier('Single');
             updateUI();
         }
-        
+
         if (message.type === "name") {
             remotePlayerName = message.name;
             checkIfBothNamesSet();
@@ -1024,6 +1026,7 @@ function setupDataChannel() {
 
 
 function joinOnlineLobby() {
+    isHost = false;
     const lobbyCode = document.getElementById("lobby-code-input").value.trim().toUpperCase();
     if (!lobbyCode) return alert("Please enter a lobby code.");
 
@@ -1072,12 +1075,9 @@ function checkIfBothNamesSet() {
         document.getElementById('online-name-screen').classList.add('d-none');
 
         if (peerConnection && dataChannel && dataChannel.readyState === "open" && dataChannel.label === "dartlink") {
-            const isHost = dataChannel.readyState === "open" && dataChannel.ordered; // crude way to detect
             if (isHost) {
-                // ✅ HOST gets to choose game mode
                 document.getElementById('start-screen').classList.remove('d-none');
             } else {
-                // 🚫 GUEST waits for host to start the game
                 const waiting = document.createElement('div');
                 waiting.className = "text-muted py-4";
                 waiting.innerHTML = "<em>Waiting for host to choose a game mode...</em>";
@@ -1086,6 +1086,7 @@ function checkIfBothNamesSet() {
         }
     }
 }
+
 
 
 function submitOnlineName() {
