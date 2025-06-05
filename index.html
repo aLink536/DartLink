@@ -351,6 +351,8 @@
             let current = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
             const newScore = current - score;
 
+            const playerName = gameType === 'multi' ? players[currentPlayerIndex] : "You";
+
             // 💥 Attempted checkout
             if (newScore === 0 && score <= 170 && !bogeyNumbers.includes(current)) {
                 const finalDartDouble = confirm("Did you finish on a double or the bull?");
@@ -358,7 +360,7 @@
                 if (!finalDartDouble) {
                     alert("Invalid checkout! Turn is a bust.");
                     history[history.length - 1].push({
-                        player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                        player: playerName,
                         score: 'BUST',
                         darts: 3,
                         isCheckout: false,
@@ -377,13 +379,15 @@
 
                 // ✅ Valid checkout
                 history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    player: playerName,
                     score: score,
                     darts: 3,
                     isCheckout: true,
                     isBust: false,
                     legIndex: history.length - 1
                 });
+
+                speakScore(playerName, score);
 
                 if (gameType === 'multi') {
                     playerScores[currentPlayerIndex] = 0;
@@ -416,7 +420,7 @@
             // 💥 Bust logic
             if (newScore < 2 || newScore < 0) {
                 history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    player: playerName,
                     score: 'BUST',
                     darts: 3,
                     isCheckout: false,
@@ -441,13 +445,15 @@
             }
 
             history[history.length - 1].push({
-                player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                player: playerName,
                 score: score,
                 darts: 3,
                 isCheckout: false,
                 isBust: false,
                 legIndex: history.length - 1
             });
+
+            speakScore(playerName, score);
 
             inputBuffer = '';
 
@@ -460,6 +466,14 @@
 
 
 
+        function speakScore(playerName, score) {
+            if ('speechSynthesis' in window) {
+                speechSynthesis.cancel(); // stop any previous speech
+                const message = `${playerName} scored ${score}`;
+                const utterance = new SpeechSynthesisUtterance(message);
+                speechSynthesis.speak(utterance);
+            }
+        }
 
 
         function undoScore() {
@@ -633,7 +647,7 @@
 
             let actual;
             if (base === 25 || base === 50) {
-                actual = base; // Ignore multiplier
+                actual = base;
             } else {
                 actual = base;
                 if (multiplier === 'Double') actual *= 2;
@@ -647,14 +661,14 @@
             let current = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
             const newScore = current - totalSoFar;
 
-            // Bust conditions
+            const playerName = gameType === 'multi' ? players[currentPlayerIndex] : "You";
             const lastDart = perDartScores[dartIndex - 1];
             const isDoubleOrBull = (lastDart === 50 || (lastDart % 2 === 0 && lastDart <= 40));
             const isCheckout = newScore === 0 && isDoubleOrBull && !bogeyNumbers.includes(current);
 
             if (newScore < 0 || (newScore === 0 && !isCheckout)) {
                 history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    player: playerName,
                     score: 'BUST',
                     darts: dartIndex,
                     isCheckout: false,
@@ -675,13 +689,15 @@
 
             if (isCheckout) {
                 history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    player: playerName,
                     score: totalSoFar,
                     darts: dartIndex,
                     isCheckout: true,
                     isBust: false,
                     legIndex: history.length - 1
                 });
+
+                speakScore(playerName, totalSoFar);
 
                 if (gameType === 'multi') {
                     playerScores[currentPlayerIndex] = 0;
@@ -710,7 +726,6 @@
                 return;
             }
 
-            // If 3 darts used, save as normal score
             if (dartIndex === 3) {
                 if (gameType === 'multi') {
                     playerScores[currentPlayerIndex] = newScore;
@@ -719,13 +734,15 @@
                 }
 
                 history[history.length - 1].push({
-                    player: gameType === 'multi' ? players[currentPlayerIndex] : "You",
+                    player: playerName,
                     score: totalSoFar,
                     darts: 3,
                     isCheckout: false,
                     isBust: false,
                     legIndex: history.length - 1
                 });
+
+                speakScore(playerName, totalSoFar);
 
                 if (gameType === 'multi') {
                     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
@@ -738,6 +755,7 @@
             updateUI();
             updateCheckoutSuggestion(getPartialScore());
         }
+
 
 
 
