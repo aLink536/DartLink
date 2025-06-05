@@ -23,11 +23,28 @@
                     Player</button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="multi-tab" onclick="selectGameType('multi')">Multiplayer</button>
+                <button class="nav-link" id="online-tab" onclick="selectGameType('online')">Online</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="multi-tab" onclick="selectGameType('multi')">Local</button>
             </li>
         </ul>
         <button class="btn btn-primary btn-lg mt-3" onclick="proceedToGameMode()">Continue</button>
     </div>
+
+    <div id="online-options" class="p-2 d-none">
+        <div class="card mx-auto" style="max-width: 500px;">
+            <div class="card-body text-center">
+                <h4 class="card-title mb-4">Online Match</h4>
+                <button class="btn btn-success btn-lg w-100 mb-4" onclick="createOnlineLobby()">Create Lobby</button>
+                <div class="input-group">
+                    <input id="lobby-code-input" class="form-control" placeholder="Enter lobby code">
+                    <button class="btn btn-primary" onclick="joinOnlineLobby()">Join</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <div id="name-screen" class="padded-container py-5 text-center d-none">
         <h1 class="mb-4">Multiplayer Setup</h1>
@@ -205,6 +222,29 @@
     </div>
     <script src="script.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyB3_SnqOAPtxtbxhxNKNzYtESmT05Yj6Zk",
+            authDomain: "dartlink-online.firebaseapp.com",
+            databaseURL: "https://dartlink-online-default-rtdb.firebaseio.com",
+            projectId: "dartlink-online",
+            storageBucket: "dartlink-online.firebasestorage.app",
+            messagingSenderId: "469856527977",
+            appId: "1:469856527977:web:eb078abf6b9c89dd7a64f8",
+            measurementId: "G-KYG1QS0M5L"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+    </script>
+
+
 
 </body>
 

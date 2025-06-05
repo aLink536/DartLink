@@ -2,22 +2,24 @@
 //  STATE & DOM REFERENCES
 // =====================================
 
+let peerConnection = null;
+let dataChannel = null;
 let legsToWin = 1;              // Legs required to win the match
 let playerLegs = [];            // Legs won by each player
 let startingScore = 501;        // Starting score for a leg
 let currentScore = startingScore;
 
-const gameScreen  = document.getElementById('game-screen');
+const gameScreen = document.getElementById('game-screen');
 const startScreen = document.getElementById('start-screen');
-const modeScreen  = document.getElementById('mode-screen');
+const modeScreen = document.getElementById('mode-screen');
 
 const history = [[]];           // History of scores (one array per leg)
 
-let inputBuffer   = '';
-let inputMode     = 'total';    // 'total' or 'perdart'
+let inputBuffer = '';
+let inputMode = 'total';    // 'total' or 'perdart'
 let perDartScores = [null, null, null];
-let dartIndex     = 0;
-let multiplier    = 'Single';
+let dartIndex = 0;
+let multiplier = 'Single';
 
 const bogeyNumbers = [159, 162, 163, 165, 166, 168, 169];
 
@@ -32,6 +34,14 @@ function selectGameType(type) {
     gameType = type;
     document.getElementById('single-tab').classList.toggle('active', type === 'single');
     document.getElementById('multi-tab').classList.toggle('active', type === 'multi');
+    document.getElementById('online-tab').classList.toggle('active', type === 'online');
+
+    if (type === 'online') {
+        document.getElementById('online-options').classList.remove('d-none');
+    } else {
+        document.getElementById('online-options').classList.add('d-none');
+    }
+
 }
 
 // After selecting game type proceed to next screen
@@ -780,6 +790,118 @@ function renderPlayerScores() {
         `;
     }
 }
+
+
+function generateLobbyCode(length = 5) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ123456789';
+    let code = '';
+    for (let i = 0; i < length; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+function createOnlineLobby() {
+    const lobbyCode = generateLobbyCode();
+    const lobbyRef = firebase.database().ref(`lobbies/${lobbyCode}`);
+
+    // Step 1: Create Peer Connection
+    peerConnection = new RTCPeerConnection();
+
+    // Step 2: Create Data Channel for game messages
+    dataChannel = peerConnection.createDataChannel("dartlink");
+    setupDataChannel(); // Define this function below
+
+    // Step 3: Create Offer
+    peerConnection.createOffer().then(offer => {
+        return peerConnection.setLocalDescription(offer).then(() => offer);
+    }).then(offer => {
+        // Step 4: Store offer in Firebase
+        return lobbyRef.set({
+            createdAt: Date.now(),
+            offer: JSON.stringify(offer),
+            answer: null
+        });
+    }).then(() => {
+        alert(`Lobby created! Share this code: ${lobbyCode}`);
+        // Step 5: Wait for answer
+        lobbyRef.on("value", snapshot => {
+            const data = snapshot.val();
+            if (data && data.answer && !peerConnection.currentRemoteDescription) {
+                const answer = JSON.parse(data.answer);
+                peerConnection.setRemoteDescription(answer);
+            }
+        });
+    }).catch(err => {
+        alert("Error setting up host: " + err.message);
+    });
+}
+
+function setupDataChannel() {
+    dataChannel.onopen = () => {
+        console.log("✅ DataChannel open!");
+        // Example test: send a message
+        dataChannel.send(JSON.stringify({ type: "hello", from: "host" }));
+    };
+
+    dataChannel.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        console.log("📩 Received:", message);
+        // TODO: sync scores, turns, etc.
+    };
+
+    dataChannel.onerror = (err) => {
+        console.error("DataChannel error:", err);
+    };
+
+    dataChannel.onclose = () => {
+        console.log("❌ DataChannel closed");
+    };
+}
+
+
+function joinOnlineLobby() {
+    const lobbyCode = document.getElementById("lobby-code-input").value.trim().toUpperCase();
+    if (!lobbyCode) return alert("Please enter a lobby code.");
+
+    const lobbyRef = firebase.database().ref(`lobbies/${lobbyCode}`);
+
+    lobbyRef.get().then(snapshot => {
+        const data = snapshot.val();
+        if (!data || !data.offer) {
+            throw new Error("Invalid or inactive lobby code.");
+        }
+
+        // Step 1: Create peer connection
+        peerConnection = new RTCPeerConnection();
+
+        // Step 2: Setup incoming data channel
+        peerConnection.ondatachannel = event => {
+            dataChannel = event.channel;
+            setupDataChannel(); // same as before
+        };
+
+        // Step 3: Set host's offer as remote description
+        const offer = JSON.parse(data.offer);
+        return peerConnection.setRemoteDescription(offer).then(() => {
+            // Step 4: Create answer
+            return peerConnection.createAnswer();
+        }).then(answer => {
+            return peerConnection.setLocalDescription(answer).then(() => answer);
+        }).then(answer => {
+            // Step 5: Save answer back to Firebase
+            return lobbyRef.update({
+                answer: JSON.stringify(answer)
+            });
+        });
+    }).then(() => {
+        alert("✅ Connected to host!");
+    }).catch(err => {
+        alert("Failed to join lobby: " + err.message);
+    });
+}
+
+
 
 
 // Show game type picker on load
