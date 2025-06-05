@@ -87,19 +87,34 @@ function startGame(mode) {
     history.push([]); // Start first leg
     currentPlayerIndex = 0;
     legsToWin = parseInt(document.getElementById('legs-input').value) || 1;
-    playerLegs = gameType === 'multi' ? [0, 0] : [0];
 
-    if (gameType === 'multi') {
+    if (gameType === 'multi' || gameType === 'online') {
+        playerLegs = [0, 0];
         playerScores = [startingScore, startingScore];
     } else {
+        playerLegs = [0];
         currentScore = startingScore;
     }
 
     document.getElementById('name-screen').classList.add('d-none');
+    document.getElementById('online-name-screen')?.classList.add('d-none');
     startScreen.classList.add('d-none');
     gameScreen.classList.remove('d-none');
+
+    // 🔁 Send start-game message if in online mode (host only)
+    if (gameType === 'online' && dataChannel?.readyState === "open" && dataChannel.label === "dartlink") {
+        const msg = {
+            type: "start-game",
+            mode: startingScore,
+            legs: legsToWin,
+            players: players
+        };
+        dataChannel.send(JSON.stringify(msg));
+    }
+
     updateUI();
 }
+
 
 
 // =====================================
@@ -107,6 +122,8 @@ function startGame(mode) {
 // =====================================
 
 function appendScore(digit) {
+    if (!isMyTurn()) return;
+
     if (inputBuffer.length < 3) {
         inputBuffer += digit;
         updateUI();
@@ -115,22 +132,28 @@ function appendScore(digit) {
 
 // Remove entered digits in total mode
 function clearScore() {
+    if (!isMyTurn()) return;
+
     inputBuffer = '';
     updateUI();
 }
 
 // Submit the total score for the turn
 function submitScore() {
+    if (!isMyTurn()) {
+        alert("It's not your turn.");
+        return;
+    }
+
     const score = parseInt(inputBuffer);
     if (isNaN(score) || score < 0 || score > 180) {
         alert("Please enter a valid score between 0 and 180.");
         return;
     }
 
-    let current = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
+    let current = gameType === 'multi' || gameType === 'online' ? playerScores[currentPlayerIndex] : currentScore;
     const newScore = current - score;
-
-    const playerName = gameType === 'multi' ? players[currentPlayerIndex] : "You";
+    const playerName = gameType === 'multi' || gameType === 'online' ? players[currentPlayerIndex] : "You";
 
     // 💥 Attempted checkout
     if (newScore === 0 && score <= 170 && !bogeyNumbers.includes(current)) {
@@ -147,7 +170,7 @@ function submitScore() {
                 legIndex: history.length - 1
             });
 
-            if (gameType === 'multi') {
+            if (gameType === 'multi' || gameType === 'online') {
                 currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
             }
 
@@ -168,7 +191,7 @@ function submitScore() {
 
         speakScore(playerName, score);
 
-        if (gameType === 'multi') {
+        if (gameType === 'multi' || gameType === 'online') {
             playerScores[currentPlayerIndex] = 0;
             playerLegs[currentPlayerIndex]++;
             handleLegWin({
@@ -196,7 +219,7 @@ function submitScore() {
         }
     }
 
-    // 💥 Bust logic
+    // 💥 Bust
     if (newScore < 2 || newScore < 0) {
         history[history.length - 1].push({
             player: playerName,
@@ -207,7 +230,7 @@ function submitScore() {
             legIndex: history.length - 1
         });
 
-        if (gameType === 'multi') {
+        if (gameType === 'multi' || gameType === 'online') {
             currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
         }
 
@@ -216,8 +239,8 @@ function submitScore() {
         return;
     }
 
-    // ✅ Valid normal score
-    if (gameType === 'multi') {
+    // ✅ Valid score
+    if (gameType === 'multi' || gameType === 'online') {
         playerScores[currentPlayerIndex] = newScore;
     } else {
         currentScore = newScore;
@@ -234,9 +257,19 @@ function submitScore() {
 
     speakScore(playerName, score);
 
+    // 🔁 Send score update over WebRTC if in online mode
+    if (gameType === 'online' && dataChannel?.readyState === "open") {
+        const msg = {
+            type: "score",
+            score: score,
+            playerIndex: currentPlayerIndex
+        };
+        dataChannel.send(JSON.stringify(msg));
+    }
+
     inputBuffer = '';
 
-    if (gameType === 'multi') {
+    if (gameType === 'multi' || gameType === 'online') {
         currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
     }
 
@@ -772,7 +805,10 @@ function renderPlayerScores() {
             const average = totalDarts > 0 ? ((totalScore / totalDarts) * 3).toFixed(2) : '-';
 
             const playerDiv = document.createElement('div');
-            playerDiv.className = `text-center flex-fill ${index === currentPlayerIndex ? 'fw-bold text-primary' : ''}`;
+            const isActive = index === currentPlayerIndex;
+            const isMyTurnNow = gameType !== 'online' || players[currentPlayerIndex] === onlinePlayerName;
+            playerDiv.className = `text-center flex-fill ${isActive && isMyTurnNow ? 'fw-bold text-primary' : ''}`;
+
             playerDiv.innerHTML = `
                 <div>${name}</div>
                 <div style="font-size: 1.5rem;">${playerScores[index]}</div>
@@ -805,18 +841,14 @@ function createOnlineLobby() {
     const lobbyCode = generateLobbyCode();
     const lobbyRef = firebase.database().ref(`lobbies/${lobbyCode}`);
 
-    // Step 1: Create Peer Connection
     peerConnection = new RTCPeerConnection();
 
-    // Step 2: Create Data Channel for game messages
     dataChannel = peerConnection.createDataChannel("dartlink");
-    setupDataChannel(); // Define this function below
+    setupDataChannel();
 
-    // Step 3: Create Offer
     peerConnection.createOffer().then(offer => {
         return peerConnection.setLocalDescription(offer).then(() => offer);
     }).then(offer => {
-        // Step 4: Store offer in Firebase
         return lobbyRef.set({
             createdAt: Date.now(),
             offer: JSON.stringify(offer),
@@ -824,7 +856,13 @@ function createOnlineLobby() {
         });
     }).then(() => {
         alert(`Lobby created! Share this code: ${lobbyCode}`);
-        // Step 5: Wait for answer
+
+        // ⬇️ Transition to name input screen
+        document.getElementById('mode-screen').classList.add('d-none');
+        document.getElementById('online-options').classList.add('d-none');
+        document.getElementById('online-name-screen').classList.remove('d-none');
+
+        // ⬇️ Listen for answer from guest
         lobbyRef.on("value", snapshot => {
             const data = snapshot.val();
             if (data && data.answer && !peerConnection.currentRemoteDescription) {
@@ -837,17 +875,79 @@ function createOnlineLobby() {
     });
 }
 
+function isMyTurn() {
+    if (gameType !== 'online') return true;
+    return players[currentPlayerIndex] === onlinePlayerName;
+}
+
+
+
 function setupDataChannel() {
     dataChannel.onopen = () => {
         console.log("✅ DataChannel open!");
-        // Example test: send a message
         dataChannel.send(JSON.stringify({ type: "hello", from: "host" }));
     };
 
     dataChannel.onmessage = (event) => {
         const message = JSON.parse(event.data);
         console.log("📩 Received:", message);
-        // TODO: sync scores, turns, etc.
+
+        // 🎯 Start game from host
+        if (message.type === "start-game") {
+            startingScore = message.mode;
+            legsToWin = message.legs;
+            players = message.players;
+            playerScores = [startingScore, startingScore];
+            currentPlayerIndex = 0;
+            playerLegs = [0, 0];
+            history.length = 0;
+            history.push([]);
+
+            inputBuffer = '';
+            perDartScores = [null, null, null];
+            dartIndex = 0;
+
+            document.getElementById('online-name-screen').classList.add('d-none');
+            document.getElementById('start-screen').classList.add('d-none');
+            document.getElementById('game-screen').classList.remove('d-none');
+
+            setInputMode('total');
+            setMultiplier('Single');
+            updateUI();
+        }
+
+        // 🧮 Score update from remote player
+        if (message.type === "score") {
+            const playerName = players[message.playerIndex];
+            const current = playerScores[message.playerIndex];
+            const newScore = current - message.score;
+
+            if (newScore < 2 || newScore < 0) {
+                history[history.length - 1].push({
+                    player: playerName,
+                    score: 'BUST',
+                    darts: 3,
+                    isCheckout: false,
+                    isBust: true,
+                    legIndex: history.length - 1
+                });
+            } else {
+                playerScores[message.playerIndex] = newScore;
+                history[history.length - 1].push({
+                    player: playerName,
+                    score: message.score,
+                    darts: 3,
+                    isCheckout: false,
+                    isBust: false,
+                    legIndex: history.length - 1
+                });
+            }
+
+            currentPlayerIndex = (message.playerIndex + 1) % players.length;
+            updateUI();
+        }
+
+        // You can add more types here later: "bust", "checkout", "undo", etc.
     };
 
     dataChannel.onerror = (err) => {
@@ -858,6 +958,7 @@ function setupDataChannel() {
         console.log("❌ DataChannel closed");
     };
 }
+
 
 
 function joinOnlineLobby() {
@@ -872,34 +973,58 @@ function joinOnlineLobby() {
             throw new Error("Invalid or inactive lobby code.");
         }
 
-        // Step 1: Create peer connection
         peerConnection = new RTCPeerConnection();
 
-        // Step 2: Setup incoming data channel
         peerConnection.ondatachannel = event => {
             dataChannel = event.channel;
-            setupDataChannel(); // same as before
+            setupDataChannel();
         };
 
-        // Step 3: Set host's offer as remote description
         const offer = JSON.parse(data.offer);
         return peerConnection.setRemoteDescription(offer).then(() => {
-            // Step 4: Create answer
             return peerConnection.createAnswer();
         }).then(answer => {
             return peerConnection.setLocalDescription(answer).then(() => answer);
         }).then(answer => {
-            // Step 5: Save answer back to Firebase
             return lobbyRef.update({
                 answer: JSON.stringify(answer)
             });
         });
     }).then(() => {
         alert("✅ Connected to host!");
+
+        // ⬇️ Transition to name input screen
+        document.getElementById('mode-screen').classList.add('d-none');
+        document.getElementById('online-options').classList.add('d-none');
+        document.getElementById('online-name-screen').classList.remove('d-none');
     }).catch(err => {
         alert("Failed to join lobby: " + err.message);
     });
 }
+
+
+function checkIfBothNamesSet() {
+    if (onlinePlayerName && remotePlayerName) {
+        players = [onlinePlayerName, remotePlayerName];
+
+        document.getElementById('online-name-screen').classList.add('d-none');
+
+        if (peerConnection && dataChannel && dataChannel.readyState === "open" && dataChannel.label === "dartlink") {
+            const isHost = dataChannel.readyState === "open" && dataChannel.ordered; // crude way to detect
+            if (isHost) {
+                // ✅ HOST gets to choose game mode
+                document.getElementById('start-screen').classList.remove('d-none');
+            } else {
+                // 🚫 GUEST waits for host to start the game
+                const waiting = document.createElement('div');
+                waiting.className = "text-muted py-4";
+                waiting.innerHTML = "<em>Waiting for host to choose a game mode...</em>";
+                document.getElementById('online-name-screen').appendChild(waiting);
+            }
+        }
+    }
+}
+
 
 
 
