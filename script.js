@@ -1,6 +1,7 @@
 // =====================================
 //  STATE & DOM REFERENCES
 // =====================================
+let startingPlayerIndex = 0; // alternates between 0 and 1
 let onlinePlayerName = "";
 let remotePlayerName = "";
 let currentLobbyCode = null;
@@ -11,6 +12,9 @@ let legsToWin = 1;              // Legs required to win the match
 let playerLegs = [];            // Legs won by each player
 let startingScore = 501;        // Starting score for a leg
 let currentScore = startingScore;
+let isGuestReady = false;
+let isHostReady = false;
+
 
 const gameScreen = document.getElementById('game-screen');
 const startScreen = document.getElementById('start-screen');
@@ -50,8 +54,7 @@ function selectGameType(type) {
 // After selecting game type proceed to next screen
 function proceedToGameMode() {
     modeScreen.classList.add('d-none');
-    if (gameType === 'multi' || gameType === 'online') {
-
+    if (gameType === 'multi') {
         document.getElementById('name-screen').classList.remove('d-none');
     } else {
         startScreen.classList.remove('d-none');
@@ -89,7 +92,7 @@ function startGame(mode) {
     dartIndex = 0;
     history.length = 0;
     history.push([]); // Start first leg
-    currentPlayerIndex = 0;
+    currentPlayerIndex = startingPlayerIndex;
     legsToWin = parseInt(document.getElementById('legs-input').value) || 1;
 
     if (gameType === 'multi' || gameType === 'online') {
@@ -101,22 +104,46 @@ function startGame(mode) {
     }
 
     document.getElementById('name-screen').classList.add('d-none');
-    document.getElementById('online-name-screen')?.classList.add('d-none');
     startScreen.classList.add('d-none');
     gameScreen.classList.remove('d-none');
 
     // 🔁 Send start-game message if in online mode (host only)
+    if (gameType === 'online') {
+        const starterDropdown = document.getElementById('starter-select');
+        startingPlayerIndex = parseInt(starterDropdown?.value || '0');
+        currentPlayerIndex = startingPlayerIndex;
+    }
     if (gameType === 'online' && dataChannel?.readyState === "open" && dataChannel.label === "dartlink") {
         const msg = {
             type: "start-game",
             mode: startingScore,
             legs: legsToWin,
-            players: players
+            players: players,
+            starter: startingPlayerIndex
         };
         dataChannel.send(JSON.stringify(msg));
     }
-
+    document.getElementById('lobby-screen').classList.add('d-none'); // ✅ Hide the lobby
     updateUI();
+}
+
+
+function showPopup({ message = '', type = 'info', title = 'Notice' }) {
+    const modalEl = document.getElementById('alertModal');
+    const modalTitle = document.getElementById('alertModalTitle');
+    const modalMessage = document.getElementById('alertModalMessage');
+
+    // Clean up previous classes
+    modalMessage.className = 'alert mb-0';
+
+    // Add appropriate alert class
+    modalMessage.classList.add(`alert-${type}`);
+
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
+
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
 }
 
 
@@ -145,13 +172,15 @@ function clearScore() {
 // Submit the total score for the turn
 function submitScore() {
     if (!isMyTurn()) {
-        alert("It's not your turn.");
+        showPopup({ message: "It's not your turn.", type: "warning", title: "Hold on!" });
+
         return;
     }
 
     const score = parseInt(inputBuffer);
     if (isNaN(score) || score < 0 || score > 180) {
-        alert("Please enter a valid score between 0 and 180.");
+        showPopup({ message: "Please enter a valid score between 0 and 180.", type: "danger", title: "Invalid Score" });
+
         return;
     }
 
@@ -164,7 +193,8 @@ function submitScore() {
         const finalDartDouble = confirm("Did you finish on a double or the bull?");
 
         if (!finalDartDouble) {
-            alert("Invalid checkout! Turn is a bust.");
+            showPopup({ message: "Invalid checkout! Turn is a bust.", type: "warning", title: "Bust!" });
+
             history[history.length - 1].push({
                 player: playerName,
                 score: 'BUST',
@@ -295,7 +325,8 @@ function speakScore(playerName, score) {
 function undoScore() {
     const currentLegHistory = history[history.length - 1];
     if (currentLegHistory.length === 0) {
-        alert("Nothing to undo in this leg.");
+        showPopup({ message: "Nothing to undo in this leg.", type: "info", title: "Undo Not Available" });
+
         return;
     }
 
@@ -376,13 +407,22 @@ function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
         dataChannel.send(JSON.stringify(msg));
     }
 
+    const shouldShowPopup =
+        gameType !== 'online' || // single/multi always shows
+        (gameType === 'online' && isHost); // only host shows in online
+
     if (isMatchOver) {
         gameScreen.classList.add('d-none');
         document.getElementById('stats-screen').classList.remove('d-none');
         renderMatchStats();
     } else {
-        alert(`${winnerName} won the leg!`);
+        if (shouldShowPopup) {
+            showPopup({ message: `${winnerName} won the leg!`, type: "success", title: "🎯 Leg Won" });
+        }
+        // Alternate who starts next leg
+        startingPlayerIndex = (startingPlayerIndex + 1) % players.length;
         resetScores();
+        currentPlayerIndex = startingPlayerIndex;
         history.push([]);
         inputBuffer = '';
         updateUI();
@@ -851,11 +891,7 @@ function renderPlayerScores() {
 
             const playerDiv = document.createElement('div');
             const isActive = index === currentPlayerIndex;
-            const isMyTurnNow = gameType !== 'online' ||
-                (isHost && index === currentPlayerIndex) ||
-                (!isHost && players[index] === onlinePlayerName && index === currentPlayerIndex);
-
-            playerDiv.className = `text-center flex-fill ${isActive && isMyTurnNow ? 'fw-bold text-primary' : ''}`;
+            playerDiv.className = `text-center flex-fill ${isActive ? 'fw-bold text-primary' : ''}`;
 
             playerDiv.innerHTML = `
                 <div>${name}</div>
@@ -897,6 +933,11 @@ function createOnlineLobby() {
     });
 
     dataChannel = peerConnection.createDataChannel("dartlink");
+
+    // ✅ Set host name early so it's available before dataChannel opens
+    const input = document.getElementById('lobby-name-input');
+    onlinePlayerName = input.value.trim() || "Player 1";
+
     setupDataChannel();
 
     peerConnection.onicecandidate = event => {
@@ -915,13 +956,20 @@ function createOnlineLobby() {
             answer: null
         });
     }).then(() => {
-        alert(`Lobby created! Share this code: ${lobbyCode}`);
+        showPopup({ message: `Lobby created! Share this code: ${lobbyCode}`, type: "info", title: "Lobby Created" });
+
 
         document.getElementById('mode-screen').classList.add('d-none');
         document.getElementById('online-options').classList.add('d-none');
-        document.getElementById('online-name-screen').classList.remove('d-none');
 
-        // ✅ Answer handler with explicit state check and catch
+        document.getElementById('lobby-screen').classList.remove('d-none');
+        document.getElementById('host-settings').classList.remove('d-none');
+        document.getElementById('name-entry-area').classList.remove('d-none');
+        document.getElementById('lobby-name-input').focus();
+
+        updateLobbyUI(); // ✅ Show start button immediately if guest is connected
+
+        // ✅ Listen for guest's answer
         lobbyRef.on("value", snapshot => {
             const data = snapshot.val();
             if (data && data.answer && !hasSetRemoteAnswer) {
@@ -942,6 +990,7 @@ function createOnlineLobby() {
             }
         });
 
+        // ✅ Listen for guest ICE candidates
         firebase.database().ref(`lobbies/${lobbyCode}/candidates/guest`)
             .on("child_added", snapshot => {
                 const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
@@ -950,10 +999,13 @@ function createOnlineLobby() {
                 });
             });
     }).catch(err => {
-        alert("Error setting up host: " + err.message);
+        showPopup({ message: "Error setting up host: " + err.message, type: "danger", title: "Host Setup Failed" });
+
         console.error("❌ Host setup error:", err);
     });
 }
+
+
 
 
 
@@ -971,14 +1023,19 @@ function setupDataChannel() {
 
         if (isHost) {
             dataChannel.send(JSON.stringify({ type: "hello", from: "host" }));
-        } else {
-            // ✅ Guest resends name if already entered
+
             if (onlinePlayerName) {
                 dataChannel.send(JSON.stringify({
                     type: "name",
                     name: onlinePlayerName
                 }));
             }
+        } else {
+            const nameToSend = onlinePlayerName || "Player 2";
+            dataChannel.send(JSON.stringify({
+                type: "name",
+                name: nameToSend
+            }));
         }
     };
 
@@ -990,8 +1047,8 @@ function setupDataChannel() {
             startingScore = message.mode;
             legsToWin = message.legs;
             players = message.players;
+            startingPlayerIndex = message.starter || 0;
             playerScores = [startingScore, startingScore];
-            currentPlayerIndex = 0;
             playerLegs = [0, 0];
             history.length = 0;
             history.push([]);
@@ -999,10 +1056,10 @@ function setupDataChannel() {
             inputBuffer = '';
             perDartScores = [null, null, null];
             dartIndex = 0;
-
-            document.getElementById('online-name-screen').classList.add('d-none');
+            currentPlayerIndex = startingPlayerIndex;  // <--- Add this line here
             document.getElementById('start-screen').classList.add('d-none');
             document.getElementById('game-screen').classList.remove('d-none');
+            document.getElementById('lobby-screen').classList.add('d-none'); // ✅ Hide lobby
 
             setInputMode('total');
             setMultiplier('Single');
@@ -1013,11 +1070,29 @@ function setupDataChannel() {
             if (isHost) {
                 remotePlayerName = message.name;
                 checkIfBothNamesSet();
+            } else {
+                remotePlayerName = message.name;
+                checkIfBothNamesSet();
+            }
+        }
+
+        if (message.type === "ready") {
+            if (isHost) {
+                isGuestReady = true;
+                updateLobbyUI();
             }
         }
 
         if (message.type === "leg-win") {
-            alert(`${message.winnerName} won the leg!`);
+            const isLocalWinner = onlinePlayerName === message.winnerName;
+
+            showPopup({
+                message: isLocalWinner
+                    ? `${message.winnerName} won the leg!`
+                    : `${message.winnerName} won the leg.`,
+                type: isLocalWinner ? "success" : "warning",
+                title: isLocalWinner ? "🎯 Leg Won" : "Leg Lost"
+            });
 
             playerScores = [startingScore, startingScore];
             currentPlayerIndex = 0;
@@ -1034,6 +1109,9 @@ function setupDataChannel() {
                 updateUI();
             }
         }
+
+
+
 
         if (message.type === "score") {
             const playerName = players[message.playerIndex];
@@ -1072,16 +1150,20 @@ function setupDataChannel() {
 
     dataChannel.onerror = (err) => {
         console.error("❌ DataChannel error:", err);
-        alert("Connection error. The game may not continue.");
+        showPopup({ message: "Connection error. The game may not continue.", type: "danger", title: "Connection Lost" });
+
     };
 
     dataChannel.onclose = () => {
         console.warn("❌ DataChannel closed");
-        alert("Your opponent has disconnected. Returning to menu.");
-        cleanupLobby();      // 💥 Deletes the Firebase lobby if you're the host
-        goToMenu();          // 🔁 Resets the game UI and state
+        showPopup({ message: "Your opponent has disconnected. Returning to menu.", type: "warning", title: "Disconnected" });
+
+        cleanupLobby();
+        goToMenu();
     };
 }
+
+
 
 
 function cleanupLobby() {
@@ -1143,12 +1225,21 @@ function joinOnlineLobby() {
             });
         });
     }).then(() => {
-        alert("✅ Connected to host!");
+        showPopup({ message: "You are connected to the host!", type: "success", title: "Connected" });
 
-        // ⬇️ Show name input screen
+
+        // ⬇️ Show lobby screen and name input immediately
         document.getElementById('mode-screen').classList.add('d-none');
         document.getElementById('online-options').classList.add('d-none');
-        document.getElementById('online-name-screen').classList.remove('d-none');
+        document.getElementById('lobby-screen').classList.remove('d-none');
+        document.getElementById('name-entry-area').classList.remove('d-none');
+
+        // ✅ Set guest name early so it can be sent as soon as dataChannel opens
+        const input = document.getElementById('lobby-name-input');
+        onlinePlayerName = input.value.trim() || "Player 2";
+
+        document.getElementById('lobby-name-input').focus();
+        updateLobbyUI();
 
         // ✅ Step 4: Listen for host ICE candidates
         firebase.database().ref(`lobbies/${lobbyCode}/candidates/host`)
@@ -1157,7 +1248,8 @@ function joinOnlineLobby() {
                 peerConnection.addIceCandidate(candidate);
             });
     }).catch(err => {
-        alert("Failed to join lobby: " + err.message);
+        showPopup({ message: "Failed to join lobby: " + err.message, type: "danger", title: "Connection Failed" });
+
         console.error(err);
     });
 }
@@ -1166,45 +1258,127 @@ function joinOnlineLobby() {
 
 
 
+
 function checkIfBothNamesSet() {
     if (onlinePlayerName && remotePlayerName) {
         players = isHost
-            ? [onlinePlayerName, remotePlayerName]
-            : [remotePlayerName, onlinePlayerName];
+            ? [onlinePlayerName || "Player 1", remotePlayerName || "Player 2"]
+            : [remotePlayerName || "Player 1", onlinePlayerName || "Player 2"];
 
-        // Host goes to start screen to pick game mode
+        // Show the shared lobby screen
+        document.getElementById('online-options').classList.add('d-none');
+        document.getElementById('lobby-screen').classList.remove('d-none');
+
+        // Show host game mode selector
         if (isHost) {
-            document.getElementById('online-name-screen').classList.add('d-none');
-            document.getElementById('start-screen').classList.remove('d-none');
-        } else {
-            // Guest sees "waiting for host" message
-            const screen = document.getElementById('online-name-screen');
-            screen.innerHTML = `
-                <h1 class="mb-4">Online Match</h1>
-                <p class="lead">Welcome, ${onlinePlayerName}</p>
-                <div class="text-muted py-4"><em>Waiting for host to choose a game mode...</em></div>
-            `;
+            document.getElementById('host-settings').classList.remove('d-none');
+        }
+
+        updateLobbyUI();
+    }
+}
+
+
+
+
+
+
+
+let nameUpdateTimeout;
+
+function submitOnlineNameLive() {
+    clearTimeout(nameUpdateTimeout);
+    nameUpdateTimeout = setTimeout(() => {
+        const input = document.getElementById('lobby-name-input');
+        const name = input.value.trim();
+
+        onlinePlayerName = name || (isHost ? "Player 1" : "Player 2");
+
+        if (dataChannel?.readyState === "open") {
+            dataChannel.send(JSON.stringify({
+                type: "name",
+                name: onlinePlayerName
+            }));
+        }
+
+        updateLobbyUI();
+    }, 300);
+}
+
+
+
+
+
+function handleReadyClick() {
+    submitOnlineName(); // Make sure the name is set
+
+    if (!isHost) {
+        isGuestReady = true;
+
+        // Notify host of readiness
+        if (dataChannel?.readyState === "open") {
+            dataChannel.send(JSON.stringify({
+                type: "ready"
+            }));
         }
     }
+
+    updateLobbyUI();
 }
 
 
 
+function updateLobbyUI() {
+    document.getElementById('online-name-screen')?.classList.add('d-none');
+    document.getElementById('lobby-screen').classList.remove('d-none');
 
-function submitOnlineName() {
-    onlinePlayerName = document.getElementById('online-player-name').value.trim() || "Player";
+    // Update display areas
+    document.getElementById('host-name-display').textContent = isHost
+        ? (onlinePlayerName || "Player 1")
+        : (remotePlayerName || "Player 1");
 
-    if (dataChannel?.readyState === "open") {
-        dataChannel.send(JSON.stringify({
-            type: "name",
-            name: onlinePlayerName
-        }));
+    document.getElementById('guest-name-display').textContent = isHost
+        ? (remotePlayerName || "Player 2")
+        : (onlinePlayerName || "Player 2");
+
+    const input = document.getElementById('lobby-name-input');
+
+    // Only update input value if it's different to avoid overwriting typing
+    const expectedValue = onlinePlayerName || (isHost ? "Player 1" : "Player 2");
+    if (input.value !== expectedValue) {
+        input.value = expectedValue;
     }
 
-    checkIfBothNamesSet();
+    input.disabled = false;
+    document.getElementById('name-entry-area').classList.remove('d-none');
+
+    if (isHost) {
+        const guestConnected = !!remotePlayerName;
+
+        document.getElementById('start-match-btn').classList.toggle('d-none', !guestConnected);
+        document.getElementById('start-match-btn').disabled = !guestConnected;
+
+        document.getElementById('host-waiting-info').classList.toggle('d-none', guestConnected);
+        document.getElementById('guest-waiting-info').classList.add('d-none');
+    } else {
+        document.getElementById('guest-waiting-info').classList.remove('d-none');
+        document.getElementById('host-waiting-info').classList.add('d-none');
+        document.getElementById('start-match-btn').classList.add('d-none');
+    }
 }
 
 
+
+
+
+
+
+document.getElementById('start-match-btn').addEventListener('click', () => {
+    const selectedMode = document.getElementById('score-mode').value;
+    startGame(parseInt(selectedMode));
+});
+
+document.getElementById('lobby-name-input').addEventListener('input', submitOnlineNameLive);
 
 
 // Show game type picker on load

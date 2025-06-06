@@ -117,8 +117,7 @@ body {
   background-color: var(--input-bg);
   color: var(--text-color);
   border: 1px solid var(--input-border);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  
 }
 
 .form-control:focus {
@@ -145,8 +144,7 @@ body {
   background-color: var(--button-bg);
   color: var(--text-color);
   border-color: var(--input-border);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+
 }
 
 
