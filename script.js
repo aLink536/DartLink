@@ -264,10 +264,22 @@ function submitScore() {
             legIndex: history.length - 1
         });
 
-        if (gameType === 'multi' || gameType === 'online') {
-            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+        // Notify other player explicitly of the bust
+        if (gameType === 'online' && dataChannel?.readyState === "open") {
+            dataChannel.send(JSON.stringify({
+                type: "bust",
+                playerIndex: currentPlayerIndex
+            }));
         }
 
+        // ✅ Local popup notification for bust
+        showPopup({
+            message: `You bust!`,
+            type: "danger",
+            title: "💥 Bust!"
+        });
+
+        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
         inputBuffer = '';
         updateUI();
         return;
@@ -392,24 +404,27 @@ function setMultiplier(value) {
 }
 
 function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
-    // ✅ Always reset per dart state after a leg win
     perDartScores = [null, null, null];
     dartIndex = 0;
 
-    // 🔁 Sync with opponent if online
+    // Alternate who starts next leg
+    startingPlayerIndex = (startingPlayerIndex + 1) % players.length;
+
+    // Explicitly sync starting player in online mode
     if (gameType === 'online' && dataChannel?.readyState === "open") {
         const msg = {
             type: "leg-win",
             isMatchOver,
             winnerName,
-            latestScore
+            latestScore,
+            nextStarter: startingPlayerIndex,
+            playerLegs // 👈 send current playerLegs
         };
         dataChannel.send(JSON.stringify(msg));
     }
 
     const shouldShowPopup =
-        gameType !== 'online' || // single/multi always shows
-        (gameType === 'online' && isHost); // only host shows in online
+        gameType !== 'online' || (gameType === 'online' && isHost);
 
     if (isMatchOver) {
         gameScreen.classList.add('d-none');
@@ -419,14 +434,14 @@ function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
         if (shouldShowPopup) {
             showPopup({ message: `${winnerName} won the leg!`, type: "success", title: "🎯 Leg Won" });
         }
-        // Alternate who starts next leg
-        startingPlayerIndex = (startingPlayerIndex + 1) % players.length;
+
         resetScores();
         currentPlayerIndex = startingPlayerIndex;
         history.push([]);
         inputBuffer = '';
         updateUI();
     }
+
     if (isMatchOver && isHost && gameType === 'online' && currentLobbyCode) {
         firebase.database().ref(`lobbies/${currentLobbyCode}`).remove();
         console.log("🧹 Lobby deleted:", currentLobbyCode);
@@ -434,12 +449,13 @@ function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
 }
 
 
+
 // Display end-of-match statistics
 function renderMatchStats() {
     const container = document.getElementById('stats-container');
     container.innerHTML = '';
 
-    const allPlayers = gameType === 'multi' ? players : ['You'];
+    const allPlayers = (gameType === 'multi' || gameType === 'online') ? players : ['You'];
 
     allPlayers.forEach(playerName => {
         const playerScores = history.flat().filter(h => h.player === playerName);
@@ -560,7 +576,7 @@ function inputDart(base) {
     const isDoubleOrBull = (lastDart === 50 || (lastDart % 2 === 0 && lastDart <= 40));
     const isCheckout = newScore === 0 && isDoubleOrBull && !bogeyNumbers.includes(current);
 
-    // 💥 Bust
+    // 💥 Bust in per-dart
     if (newScore < 0 || (newScore === 0 && !isCheckout)) {
         history[history.length - 1].push({
             player: playerName,
@@ -571,16 +587,29 @@ function inputDart(base) {
             legIndex: history.length - 1
         });
 
-        if (gameType === 'multi' || gameType === 'online') {
-            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+        // Notify other player explicitly of the bust
+        if (gameType === 'online' && dataChannel?.readyState === "open") {
+            dataChannel.send(JSON.stringify({
+                type: "bust",
+                playerIndex: currentPlayerIndex
+            }));
         }
 
+        // ✅ Local popup notification for bust
+        showPopup({
+            message: `You bust!`,
+            type: "danger",
+            title: "💥 Bust!"
+        });
+
+        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
         perDartScores = [null, null, null];
         dartIndex = 0;
         updateUI();
         updateCheckoutSuggestion();
         return;
     }
+
 
     // ✅ Checkout
     if (isCheckout) {
@@ -1066,6 +1095,24 @@ function setupDataChannel() {
             updateUI();
         }
 
+        if (message.type === "bust") {
+            const playerName = players[message.playerIndex];
+
+            history[history.length - 1].push({
+                player: playerName,
+                score: 'BUST',
+                darts: 3,
+                isCheckout: false,
+                isBust: true,
+                legIndex: history.length - 1
+            });
+
+            currentPlayerIndex = (message.playerIndex + 1) % players.length;
+            updateUI();
+        }
+
+
+
         if (message.type === "name") {
             if (isHost) {
                 remotePlayerName = message.name;
@@ -1095,7 +1142,15 @@ function setupDataChannel() {
             });
 
             playerScores = [startingScore, startingScore];
-            currentPlayerIndex = 0;
+
+            // Explicitly set starting player based on received data
+            startingPlayerIndex = message.nextStarter;
+            currentPlayerIndex = startingPlayerIndex;
+
+            if (message.playerLegs) {
+                playerLegs = message.playerLegs;
+            }
+
             history.push([]);
             inputBuffer = '';
             perDartScores = [null, null, null];
@@ -1109,6 +1164,7 @@ function setupDataChannel() {
                 updateUI();
             }
         }
+
 
 
 
