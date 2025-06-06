@@ -3,6 +3,7 @@
 // =====================================
 let onlinePlayerName = "";
 let remotePlayerName = "";
+let currentLobbyCode = null;
 let isHost = false;
 let peerConnection = null;
 let dataChannel = null;
@@ -386,6 +387,10 @@ function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
         inputBuffer = '';
         updateUI();
     }
+    if (isMatchOver && isHost && gameType === 'online' && currentLobbyCode) {
+        firebase.database().ref(`lobbies/${currentLobbyCode}`).remove();
+        console.log("🧹 Lobby deleted:", currentLobbyCode);
+    }
 }
 
 
@@ -673,7 +678,7 @@ function getCheckoutSuggestion(score) {
 
 // Display a suggested checkout route (if any)
 function updateCheckoutSuggestion(scoreOverride = null) {
-    const activeScore = gameType === 'multi' ? playerScores[currentPlayerIndex] : currentScore;
+    const activeScore = getActiveScore();
     const score = scoreOverride !== null ? activeScore - scoreOverride : activeScore;
     const suggestionBox = document.getElementById('checkout-suggestion');
     const suggestionText = document.getElementById('checkout-text');
@@ -727,8 +732,11 @@ function goToMenu() {
         <strong>🎉 Game Over!</strong> You've checked out successfully.
     `;
 
+    cleanupLobby(); // ✅ Remove the Firebase lobby if you're the host
+
     updateUI();
 }
+
 
 
 
@@ -820,6 +828,11 @@ function updateUI() {
 }
 
 
+function getActiveScore() {
+    return (gameType === 'multi' || gameType === 'online')
+        ? playerScores[currentPlayerIndex]
+        : currentScore;
+}
 
 
 
@@ -828,7 +841,7 @@ function renderPlayerScores() {
     const playersContainer = document.getElementById('players');
     playersContainer.innerHTML = '';
 
-   if (gameType === 'multi' || gameType === 'online') {
+    if (gameType === 'multi' || gameType === 'online') {
         players.forEach((name, index) => {
             // Compute player's total darts and score (excluding busts)
             const entries = history.flat().filter(h => h.player === name && !h.isBust);
@@ -875,6 +888,7 @@ function generateLobbyCode(length = 5) {
 function createOnlineLobby() {
     isHost = true;
     const lobbyCode = generateLobbyCode();
+    currentLobbyCode = lobbyCode;
     const lobbyRef = firebase.database().ref(`lobbies/${lobbyCode}`);
     let hasSetRemoteAnswer = false;
 
@@ -940,6 +954,7 @@ function createOnlineLobby() {
         console.error("❌ Host setup error:", err);
     });
 }
+
 
 
 
@@ -1063,17 +1078,27 @@ function setupDataChannel() {
     dataChannel.onclose = () => {
         console.warn("❌ DataChannel closed");
         alert("Your opponent has disconnected. Returning to menu.");
-        goToMenu();
+        cleanupLobby();      // 💥 Deletes the Firebase lobby if you're the host
+        goToMenu();          // 🔁 Resets the game UI and state
     };
 }
 
 
-
+function cleanupLobby() {
+    if (isHost && gameType === 'online' && currentLobbyCode) {
+        firebase.database().ref(`lobbies/${currentLobbyCode}`).remove()
+            .then(() => console.log("🧹 Lobby deleted:", currentLobbyCode))
+            .catch(err => console.error("❌ Failed to delete lobby:", err));
+        currentLobbyCode = null;
+    }
+}
 
 
 function joinOnlineLobby() {
     isHost = false;
     const lobbyCode = document.getElementById("lobby-code-input").value.trim().toUpperCase();
+    currentLobbyCode = lobbyCode;
+
     if (!lobbyCode) return alert("Please enter a lobby code.");
 
     const lobbyRef = firebase.database().ref(`lobbies/${lobbyCode}`);
@@ -1136,6 +1161,7 @@ function joinOnlineLobby() {
         console.error(err);
     });
 }
+
 
 
 
