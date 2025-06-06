@@ -14,22 +14,28 @@
 
 <body>
 
-    <div id="mode-screen" class="padded-container py-5 text-center">
+    <div id="mode-screen" class="pt-5 text-center">
         <h1 class="mb-4">Welcome to DartLink</h1>
         <p class="lead">Select Game Type</p>
         <ul class="nav nav-tabs justify-content-center mb-4" role="tablist">
             <li class="nav-item">
-                <button class="nav-link active" id="single-tab" onclick="selectGameType('single')">Single
-                    Player</button>
+                <button class="nav-link active" id="single-tab" onclick="selectGameType('single')">
+                    <i class="bi-person"></i>
+                </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="online-tab" onclick="selectGameType('online')">Online</button>
+                <button class="nav-link" id="online-tab" onclick="selectGameType('online')">
+                    <i class="bi-wifi"></i>
+                </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="multi-tab" onclick="selectGameType('multi')">Local</button>
+                <button class="nav-link" id="multi-tab" onclick="selectGameType('multi')">
+                    <i class="bi-people"></i>
+                </button>
             </li>
         </ul>
-        <button class="btn btn-primary btn-lg mt-3" onclick="proceedToGameMode()">Continue</button>
+
+        <button class="btn btn-primary btn-lg mt-3" id="continue-btn" onclick="proceedToGameMode()">Continue</button>
     </div>
 
     <div id="online-options" class="p-2 d-none">
@@ -64,9 +70,9 @@
 
     <div id="lobby-screen" class="container py-5 d-none">
         <h1 class="text-center mb-4">Online Lobby</h1>
-
-        <div class="row mb-3">
-            <div class="col-md-6">
+        
+        <div class="row row-cols-2 g-3 mb-3 flex-nowrap overflow-auto">
+            <div class="col">
                 <div class="card">
                     <div class="card-body text-center">
                         <h5>Host</h5>
@@ -85,24 +91,43 @@
             </div>
         </div>
 
-        <div id="host-settings" class="mb-3 text-center d-none">
-            <label for="score-mode" class="form-label">Game Mode</label>
-            <select id="score-mode" class="form-select w-auto d-inline-block">
-                <option value="301">301</option>
-                <option value="501" selected>501</option>
-            </select>
-            <div class="text-center mt-3" id="host-legs-setting">
-                <label for="legs-input" class="form-label">Legs to play</label>
-                <input type="number" id="legs-input" class="form-control w-auto d-inline-block" min="1" value="1"
-                    style="text-align: center;">
-            </div>
-            <label for="starter-select" class="form-label mt-3">Who Starts First?</label>
-            <select id="starter-select" class="form-select w-auto d-inline-block">
-                <option value="0">Player 1</option>
-                <option value="1">Player 2</option>
-            </select>
+        <div id="host-settings" class="mb-4 text-center">
+            <div class="d-flex flex-wrap justify-content-center align-items-center gap-3 mb-3">
 
+                <!-- Game Mode -->
+                <div>
+                    <label for="score-mode" class="form-label mb-1">
+                        Mode
+                    </label><br>
+                    <select id="score-mode" class="form-select w-auto d-inline-block">
+                        <option value="301">301</option>
+                        <option value="501" selected>501</option>
+                    </select>
+                </div>
+
+                <!-- Legs -->
+                <div>
+                    <label for="legs-input" class="form-label mb-1">
+                        </i> Legs
+                    </label><br>
+                    <input type="number" id="legs-input" class="form-control form-control-sm w-auto d-inline-block"
+                        min="1" max="15" value="1" style="text-align: center; width: 70px;">
+                </div>
+
+                <!-- Who Starts -->
+                <div>
+                    <label for="starter-select" class="form-label mb-1">
+                        Starter
+                    </label><br>
+                    <select id="starter-select" class="form-select w-auto d-inline-block">
+                        <option value="0">Player 1</option>
+                        <option value="1">Player 2</option>
+                    </select>
+                </div>
+
+            </div>
         </div>
+
 
         <div id="name-entry-area" class="text-center mb-3">
             <input id="lobby-name-input" class="form-control mb-2" placeholder="Your name (optional)" />

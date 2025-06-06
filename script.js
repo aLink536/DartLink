@@ -42,6 +42,7 @@ function selectGameType(type) {
     document.getElementById('single-tab').classList.toggle('active', type === 'single');
     document.getElementById('multi-tab').classList.toggle('active', type === 'multi');
     document.getElementById('online-tab').classList.toggle('active', type === 'online');
+    document.getElementById('continue-btn').classList.toggle('d-none', type === 'online');
 
     if (type === 'online') {
         document.getElementById('online-options').classList.remove('d-none');
@@ -173,154 +174,29 @@ function clearScore() {
 function submitScore() {
     if (!isMyTurn()) {
         showPopup({ message: "It's not your turn.", type: "warning", title: "Hold on!" });
-
         return;
     }
 
     const score = parseInt(inputBuffer);
     if (isNaN(score) || score < 0 || score > 180) {
         showPopup({ message: "Please enter a valid score between 0 and 180.", type: "danger", title: "Invalid Score" });
-
         return;
     }
 
-    let current = gameType === 'multi' || gameType === 'online' ? playerScores[currentPlayerIndex] : currentScore;
+    const current = getActiveScore();
     const newScore = current - score;
-    const playerName = gameType === 'multi' || gameType === 'online' ? players[currentPlayerIndex] : "You";
-
-    // 💥 Attempted checkout
-    if (newScore === 0 && score <= 170 && !bogeyNumbers.includes(current)) {
-        const finalDartDouble = confirm("Did you finish on a double or the bull?");
-
-        if (!finalDartDouble) {
-            showPopup({ message: "Invalid checkout! Turn is a bust.", type: "warning", title: "Bust!" });
-
-            history[history.length - 1].push({
-                player: playerName,
-                score: 'BUST',
-                darts: 3,
-                isCheckout: false,
-                isBust: true,
-                legIndex: history.length - 1
-            });
-
-            if (gameType === 'multi' || gameType === 'online') {
-                currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
-            }
-
-            inputBuffer = '';
-            updateUI();
-            return;
-        }
-
-        // ✅ Valid checkout
-        history[history.length - 1].push({
-            player: playerName,
-            score: score,
-            darts: 3,
-            isCheckout: true,
-            isBust: false,
-            legIndex: history.length - 1
-        });
-
-        speakScore(playerName, score);
-
-        if (gameType === 'multi' || gameType === 'online') {
-            playerScores[currentPlayerIndex] = 0;
-            playerLegs[currentPlayerIndex]++;
-            handleLegWin({
-                isMatchOver: playerLegs[currentPlayerIndex] >= legsToWin,
-                winnerName: players[currentPlayerIndex],
-                resetScores: () => {
-                    playerScores = [startingScore, startingScore];
-                    currentPlayerIndex = 0;
-                },
-                latestScore: score
-            });
-            return;
-        } else {
-            currentScore = 0;
-            playerLegs[0]++;
-            handleLegWin({
-                isMatchOver: playerLegs[0] >= legsToWin,
-                winnerName: "You",
-                resetScores: () => {
-                    currentScore = startingScore;
-                },
-                latestScore: score
-            });
-            return;
-        }
-    }
-
-    // 💥 Bust
-    if (newScore < 2 || newScore < 0) {
-        history[history.length - 1].push({
-            player: playerName,
-            score: 'BUST',
-            darts: 3,
-            isCheckout: false,
-            isBust: true,
-            legIndex: history.length - 1
-        });
-
-        // Notify other player explicitly of the bust
-        if (gameType === 'online' && dataChannel?.readyState === "open") {
-            dataChannel.send(JSON.stringify({
-                type: "bust",
-                playerIndex: currentPlayerIndex
-            }));
-        }
-
-        // ✅ Local popup notification for bust
-        showPopup({
-            message: `You bust!`,
-            type: "danger",
-            title: "💥 Bust!"
-        });
-
-        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
-        inputBuffer = '';
-        updateUI();
-        return;
-    }
-
-    // ✅ Valid score
-    if (gameType === 'multi' || gameType === 'online') {
-        playerScores[currentPlayerIndex] = newScore;
-    } else {
-        currentScore = newScore;
-    }
-
-    history[history.length - 1].push({
-        player: playerName,
-        score: score,
-        darts: 3,
-        isCheckout: false,
-        isBust: false,
-        legIndex: history.length - 1
-    });
-
-    speakScore(playerName, score);
-
-    // 🔁 Send score update over WebRTC if in online mode
-    if (gameType === 'online' && dataChannel?.readyState === "open") {
-        const msg = {
-            type: "score",
-            score: score,
-            playerIndex: currentPlayerIndex
-        };
-        dataChannel.send(JSON.stringify(msg));
-    }
 
     inputBuffer = '';
 
-    if (gameType === 'multi' || gameType === 'online') {
-        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+    if (newScore === 0 && score <= 170 && !bogeyNumbers.includes(current)) {
+        const finalDartDouble = confirm("Did you finish on a double or the bull?");
+        return processTurn({ score, darts: 3, isCheckout: finalDartDouble, bust: !finalDartDouble });
     }
 
-    updateUI();
+    const bust = newScore < 2 || newScore < 0;
+    processTurn({ score, darts: 3, isCheckout: false, bust });
 }
+
 
 
 
@@ -568,73 +444,74 @@ function inputDart(base) {
     dartIndex++;
 
     const totalSoFar = perDartScores.reduce((sum, s) => sum + (s || 0), 0);
-    let current = gameType === 'multi' || gameType === 'online' ? playerScores[currentPlayerIndex] : currentScore;
+    const current = getActiveScore();
     const newScore = current - totalSoFar;
 
-    const playerName = gameType === 'multi' || gameType === 'online' ? players[currentPlayerIndex] : "You";
     const lastDart = perDartScores[dartIndex - 1];
     const isDoubleOrBull = (lastDart === 50 || (lastDart % 2 === 0 && lastDart <= 40));
     const isCheckout = newScore === 0 && isDoubleOrBull && !bogeyNumbers.includes(current);
+    const bust = newScore < 0 || (newScore === 0 && !isCheckout);
 
-    // 💥 Bust in per-dart
-    if (newScore < 0 || (newScore === 0 && !isCheckout)) {
-        history[history.length - 1].push({
-            player: playerName,
-            score: 'BUST',
-            darts: dartIndex,
-            isCheckout: false,
-            isBust: true,
-            legIndex: history.length - 1
-        });
-
-        // Notify other player explicitly of the bust
-        if (gameType === 'online' && dataChannel?.readyState === "open") {
-            dataChannel.send(JSON.stringify({
-                type: "bust",
-                playerIndex: currentPlayerIndex
-            }));
-        }
-
-        // ✅ Local popup notification for bust
-        showPopup({
-            message: `You bust!`,
-            type: "danger",
-            title: "💥 Bust!"
-        });
-
-        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+    if (bust || isCheckout || dartIndex === 3) {
+        // Reset dart state before processing
         perDartScores = [null, null, null];
         dartIndex = 0;
-        updateUI();
+
+        processTurn({
+            score: totalSoFar,
+            darts: bust ? dartIndex : 3,
+            isCheckout,
+            bust
+        });
+
         updateCheckoutSuggestion();
         return;
     }
 
+    updateUI();
+    updateCheckoutSuggestion(getPartialScore());
+}
 
-    // ✅ Checkout
+
+
+
+function processTurn({ score, darts, isCheckout, bust }) {
+    const playerName = (gameType === 'multi' || gameType === 'online') ? players[currentPlayerIndex] : "You";
+
+    history[history.length - 1].push({
+        player: playerName,
+        score: bust ? 'BUST' : score,
+        darts,
+        isCheckout,
+        isBust: bust,
+        legIndex: history.length - 1
+    });
+
+    if (bust) {
+        if (gameType === 'online' && dataChannel?.readyState === "open") {
+            dataChannel.send(JSON.stringify({ type: "bust", playerIndex: currentPlayerIndex }));
+        }
+
+        showPopup({ message: "You bust!", type: "danger", title: "💥 Bust!" });
+        currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+        updateUI();
+        return;
+    }
+
+    speakScore(playerName, score);
+
     if (isCheckout) {
-        history[history.length - 1].push({
-            player: playerName,
-            score: totalSoFar,
-            darts: dartIndex,
-            isCheckout: true,
-            isBust: false,
-            legIndex: history.length - 1
-        });
-
-        speakScore(playerName, totalSoFar);
-
         if (gameType === 'multi' || gameType === 'online') {
             playerScores[currentPlayerIndex] = 0;
             playerLegs[currentPlayerIndex]++;
             handleLegWin({
                 isMatchOver: playerLegs[currentPlayerIndex] >= legsToWin,
-                winnerName: players[currentPlayerIndex],
+                winnerName: playerName,
                 resetScores: () => {
                     playerScores = [startingScore, startingScore];
                     currentPlayerIndex = 0;
                 },
-                latestScore: totalSoFar
+                latestScore: score
             });
         } else {
             currentScore = 0;
@@ -645,51 +522,25 @@ function inputDart(base) {
                 resetScores: () => {
                     currentScore = startingScore;
                 },
-                latestScore: totalSoFar
+                latestScore: score
             });
         }
         return;
     }
 
-    // ✅ Normal score, after 3 darts
-    if (dartIndex === 3) {
-        if (gameType === 'multi' || gameType === 'online') {
-            playerScores[currentPlayerIndex] = newScore;
-        } else {
-            currentScore = newScore;
-        }
-
-        history[history.length - 1].push({
-            player: playerName,
-            score: totalSoFar,
-            darts: 3,
-            isCheckout: false,
-            isBust: false,
-            legIndex: history.length - 1
-        });
-
-        speakScore(playerName, totalSoFar);
-
-        // 🔁 Sync score with opponent
-        if (gameType === 'online' && dataChannel?.readyState === "open") {
-            const msg = {
-                type: "score",
-                score: totalSoFar,
-                playerIndex: currentPlayerIndex
-            };
-            dataChannel.send(JSON.stringify(msg));
-        }
-
-        if (gameType === 'multi' || gameType === 'online') {
-            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
-        }
-
-        perDartScores = [null, null, null];
-        dartIndex = 0;
+    // Normal score (non-bust, non-checkout)
+    if (gameType === 'multi' || gameType === 'online') {
+        playerScores[currentPlayerIndex] -= score;
+    } else {
+        currentScore -= score;
     }
 
+    if (gameType === 'online' && dataChannel?.readyState === "open") {
+        dataChannel.send(JSON.stringify({ type: "score", score, playerIndex: currentPlayerIndex }));
+    }
+
+    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
     updateUI();
-    updateCheckoutSuggestion(getPartialScore());
 }
 
 
