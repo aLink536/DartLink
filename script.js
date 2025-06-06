@@ -49,7 +49,8 @@ function selectGameType(type) {
 // After selecting game type proceed to next screen
 function proceedToGameMode() {
     modeScreen.classList.add('d-none');
-    if (gameType === 'multi') {
+    if (gameType === 'multi' || gameType === 'online') {
+
         document.getElementById('name-screen').classList.remove('d-none');
     } else {
         startScreen.classList.remove('d-none');
@@ -755,7 +756,8 @@ function updateUI() {
     const historyList = document.getElementById('score-history');
     historyList.innerHTML = '';
 
-    if (gameType === 'multi') {
+    if (gameType === 'multi' || gameType === 'online') {
+
         const row = document.createElement('div');
         row.className = 'row';
 
@@ -826,7 +828,7 @@ function renderPlayerScores() {
     const playersContainer = document.getElementById('players');
     playersContainer.innerHTML = '';
 
-    if (gameType === 'multi') {
+   if (gameType === 'multi' || gameType === 'online') {
         players.forEach((name, index) => {
             // Compute player's total darts and score (excluding busts)
             const entries = history.flat().filter(h => h.player === name && !h.isBust);
