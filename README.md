@@ -42,6 +42,6 @@
 ## 📦 Local Development
 
 ```bash
-git clone https://github.com/yourusername/dartlink.git
+gh repo clone aLink536/DartLink
 cd dartlink
 open index.html
