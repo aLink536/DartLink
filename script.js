@@ -94,7 +94,9 @@ function startGame(mode) {
     history.length = 0;
     history.push([]); // Start first leg
     currentPlayerIndex = startingPlayerIndex;
-    legsToWin = parseInt(document.getElementById('legs-input').value) || 1;
+    const lobbyLegs = document.getElementById('lobby-legs-input');
+    const legsInput = document.getElementById('legs-input');
+    legsToWin = parseInt((lobbyLegs || legsInput).value) || 1;
 
     if (gameType === 'multi' || gameType === 'online') {
         playerLegs = [0, 0];
@@ -126,6 +128,7 @@ function startGame(mode) {
     }
     document.getElementById('lobby-screen').classList.add('d-none'); // ✅ Hide the lobby
     updateUI();
+    speakMessage('Game on');
 }
 
 
@@ -200,14 +203,18 @@ function submitScore() {
 
 
 
-// Use Web Speech API to announce the score
-function speakScore(playerName, score) {
+// Speak an arbitrary message using the Web Speech API
+function speakMessage(message) {
     if ('speechSynthesis' in window) {
-        speechSynthesis.cancel(); // stop any previous speech
-        const message = `${playerName} scored ${score}`;
+        speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(message);
         speechSynthesis.speak(utterance);
     }
+}
+
+// Announce a player's score
+function speakScore(playerName, score) {
+    speakMessage(`${playerName} scored ${score}`);
 }
 
 function undoScore() {
@@ -316,6 +323,7 @@ function handleLegWin({ isMatchOver, winnerName, resetScores, latestScore }) {
         history.push([]);
         inputBuffer = '';
         updateUI();
+        speakMessage('Game on');
     }
 
     if (isMatchOver && isHost && gameType === 'online' && currentLobbyCode) {
@@ -944,6 +952,7 @@ function setupDataChannel() {
             setInputMode('total');
             setMultiplier('Single');
             updateUI();
+            speakMessage('Game on');
         }
 
         if (message.type === "bust") {
@@ -1013,6 +1022,7 @@ function setupDataChannel() {
                 renderMatchStats();
             } else {
                 updateUI();
+                speakMessage('Game on');
             }
         }
 
@@ -1046,6 +1056,7 @@ function setupDataChannel() {
                 });
             }
 
+            speakScore(playerName, message.score);
             currentPlayerIndex = (message.playerIndex + 1) % players.length;
             updateUI();
         }
